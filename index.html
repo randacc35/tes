@@ -5230,28 +5230,140 @@ function MapModule({
     client: 'Client'
   };
 
-  // Geocode an address using Nominatim (respects offline cache)
+  // ── JAMAICA COMMUNITY COORDINATES FALLBACK ──────────────────────────────────
+  const JM_COMMUNITIES = {
+    // Kingston & St. Andrew
+    'kingston': [17.9970, -76.7936], 'downtown kingston': [17.9970, -76.7936],
+    'new kingston': [17.9938, -76.7856], 'half way tree': [18.0101, -76.7927],
+    'cross roads': [17.9993, -76.7878], 'vineyard town': [17.9951, -76.7739],
+    'august town': [18.0126, -76.7561], 'papine': [18.0237, -76.7497],
+    'mona': [18.0173, -76.7488], 'liguanea': [18.0062, -76.7767],
+    'constant spring': [18.0420, -76.7917], 'stony hill': [18.0661, -76.7647],
+    'meadowbrook': [18.0220, -76.7858], 'barbican': [18.0282, -76.7697],
+    'manor park': [18.0387, -76.7807], 'norbrook': [18.0334, -76.7847],
+    'cherry gardens': [18.0255, -76.7778], 'havendale': [18.0290, -76.8043],
+    'portmore': [17.9533, -76.8750], 'waterford': [17.9656, -76.8669],
+    'gregory park': [17.9761, -76.8567], 'braeton': [17.9453, -76.8832],
+    'independence city': [17.9573, -76.8826], 'edgewater': [17.9606, -76.9025],
+    'caymanas': [17.9879, -76.8742], 'twickenham park': [17.9760, -76.8808],
+    'spanish town': [17.9909, -76.9562], 'old harbour': [17.9218, -77.1066],
+    'old harbour bay': [17.8967, -77.0953], 'linstead': [18.1421, -77.0267],
+    'bog walk': [18.0990, -77.0019], 'ewarton': [18.1722, -77.0684],
+    'kitson town': [18.0917, -76.9978], 'ensom city': [17.9868, -76.8956],
+    // St. Catherine
+    'greater portmore': [17.9533, -76.8750], 'passage fort': [17.9395, -76.9164],
+    'hellshire': [17.9053, -76.9453], 'central village': [18.0125, -76.9284],
+    'angels': [18.0650, -76.9500], 'sligoville': [18.0936, -77.0028],
+    // St. Thomas
+    'morant bay': [17.8820, -76.4090], 'yallahs': [17.8750, -76.5640],
+    'port morant': [17.8910, -76.3270], 'lyssons': [17.8706, -76.4850],
+    'seaforth': [17.9012, -76.4631], 'golden grove': [17.9042, -76.5093],
+    'rocky point': [17.8460, -77.0840], 'bull bay': [17.9300, -76.6680],
+    'cedar valley': [18.0001, -76.5167], 'bath': [18.0057, -76.3715],
+    // Portland
+    'port antonio': [18.1750, -76.4507], 'hope bay': [18.1620, -76.5560],
+    'buff bay': [18.1890, -76.6700], 'boston bay': [18.1476, -76.3903],
+    'moore town': [18.1064, -76.4394], 'long bay': [18.0892, -76.3424],
+    'annotto bay': [18.2667, -76.7667], 'windsor': [18.2340, -76.5500],
+    // St. Mary
+    'port maria': [18.3668, -76.8903], 'oracabessa': [18.4005, -76.9530],
+    'highgate': [18.2742, -76.9008], 'richmond': [18.2198, -76.8723],
+    'guys hill': [18.1751, -76.9369], 'fellowship': [18.3264, -76.9861],
+    // St. Ann
+    'st. ann\'s bay': [18.4350, -77.2000], "st ann's bay": [18.4350, -77.2000],
+    'ocho rios': [18.4060, -77.1030], 'brown\'s town': [18.3819, -77.3578],
+    'browns town': [18.3819, -77.3578], 'claremont': [18.3583, -77.2108],
+    'moneague': [18.2697, -77.1236], 'alexandria': [18.3506, -77.3928],
+    'discovery bay': [18.4725, -77.4069], 'runaway bay': [18.4594, -77.3358],
+    'priory': [18.4374, -77.1428], 'lydford': [18.3013, -77.1817],
+    // Trelawny
+    'falmouth': [18.4978, -77.6564], 'duncans': [18.4894, -77.5353],
+    'wakefield': [18.3778, -77.6542], 'rio bueno': [18.4828, -77.4572],
+    'ulster spring': [18.3333, -77.6167], 'clarks town': [18.4278, -77.5458],
+    // St. James
+    'montego bay': [18.4762, -77.8939], 'rose hall': [18.5153, -77.8175],
+    'ironshore': [18.4969, -77.8592], 'catherine hall': [18.4822, -77.9169],
+    'norwood': [18.4879, -77.9203], 'bogue': [18.4820, -77.9111],
+    'granville': [18.4980, -77.9464], 'cambridge': [18.3056, -77.9108],
+    'adelphi': [18.3528, -77.9689], 'hopewell': [18.5050, -78.0139],
+    // Hanover
+    'lucea': [18.4512, -78.1731], 'hopewell': [18.5050, -78.0139],
+    'green island': [18.4458, -78.2742], 'sandy bay': [18.4311, -78.1494],
+    'march town': [18.3919, -78.1436],
+    // Westmoreland
+    'savanna-la-mar': [18.2150, -78.1364], 'savanna la mar': [18.2150, -78.1364],
+    'negril': [18.2711, -78.3521], 'whitehouse': [18.0578, -78.0872],
+    'petersfield': [18.1875, -78.1247], 'frome': [18.2328, -78.1572],
+    'grange hill': [18.2497, -78.1575], 'brighton': [18.1289, -78.1583],
+    'little london': [18.2517, -78.2344],
+    // St. Elizabeth
+    'black river': [18.0250, -77.8500], 'santa cruz': [18.0500, -77.7167],
+    'mandeville': [18.0411, -77.5014], 'junction': [18.0206, -77.7186],
+    'balaclava': [18.2000, -77.7167], 'lacovia': [18.0792, -77.7814],
+    'myersville': [18.0658, -77.5903], 'accompong': [18.1167, -77.7333],
+    // Manchester
+    'christiana': [18.1833, -77.5167], 'porus': [18.0167, -77.4000],
+    'spaldings': [18.2167, -77.4667], 'kellits': [18.1667, -77.3000],
+    'frankfield': [18.2378, -77.3553], 'alligator pond': [17.8806, -77.5625],
+    // Clarendon
+    'may pen': [17.9680, -77.2430], 'chapelton': [18.0725, -77.2722],
+    'lionel town': [17.8411, -77.2072], 'hayes': [17.9008, -77.3011],
+    'four paths': [17.9528, -77.2964], 'milk river': [17.8703, -77.3044],
+    'denbigh': [17.9714, -77.2989], 'kellys': [18.1167, -77.2833],
+    'williams field': [17.9575, -77.2511],
+    // Post offices (common delivery points)
+    'half way tree post office': [18.0101, -76.7927],
+    'kingston post office': [17.9970, -76.7936],
+    'spanish town post office': [17.9909, -76.9562],
+    'may pen post office': [17.9680, -77.2430],
+    'montego bay post office': [18.4762, -77.8939],
+    'mandeville post office': [18.0411, -77.5014],
+    'port antonio post office': [18.1750, -76.4507],
+    'morant bay post office': [17.8820, -76.4090],
+    'black river post office': [18.0250, -77.8500],
+    'falmouth post office': [18.4978, -77.6564],
+    'lucea post office': [18.4512, -78.1731],
+    'savanna-la-mar post office': [18.2150, -78.1364],
+    'ocho rios post office': [18.4060, -77.1030],
+    'port maria post office': [18.3668, -76.8903],
+    'st. ann\'s bay post office': [18.4350, -77.2000],
+  };
+
+  const lookupCommunity = (address) => {
+    if (!address) return null;
+    const norm = address.toLowerCase().trim().replace(/[,\.]/g, '');
+    // Direct match
+    if (JM_COMMUNITIES[norm]) return { lat: JM_COMMUNITIES[norm][0], lng: JM_COMMUNITIES[norm][1], display: address };
+    // Partial match — find the longest key that is contained in the address
+    let best = null, bestLen = 0;
+    for (const [k, v] of Object.entries(JM_COMMUNITIES)) {
+      if (norm.includes(k) && k.length > bestLen) { best = v; bestLen = k.length; }
+    }
+    if (best) return { lat: best[0], lng: best[1], display: address };
+    return null;
+  };
+
+  // Geocode using LocationIQ (primary) → community table (fallback)
+  const LOCATIONIQ_KEY = 'pk.e58e62d384f616e2b2f48c2f85ad8d32';
   const geocodeAddress = useCallback(async (address, parish) => {
     const key = (address + (parish || '')).toLowerCase().replace(/\s+/g, ' ').trim();
     if (geocodeCache[key]) return geocodeCache[key];
+    // 1. Community/post-office lookup table (instant, offline-safe)
+    const communityHit = lookupCommunity(address);
+    if (communityHit) {
+      const newCache = { ...geocodeCache, [key]: communityHit };
+      setGeocodeCache(newCache);
+      localStorage.setItem('ssa_geocache', JSON.stringify(newCache));
+      return communityHit;
+    }
+    // 2. LocationIQ geocoding (online)
     const q = encodeURIComponent(`${address}, ${parish || 'Jamaica'}`);
     try {
-      const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${q}&limit=1&countrycodes=jm`, {
-        headers: {
-          'Accept-Language': 'en'
-        }
-      });
+      const r = await fetch(`https://us1.locationiq.com/v1/search?key=${LOCATIONIQ_KEY}&q=${q}&countrycodes=jm&limit=1&format=json`);
       const data = await r.json();
-      if (data && data[0]) {
-        const result = {
-          lat: parseFloat(data[0].lat),
-          lng: parseFloat(data[0].lon),
-          display: data[0].display_name
-        };
-        const newCache = {
-          ...geocodeCache,
-          [key]: result
-        };
+      if (Array.isArray(data) && data[0]) {
+        const result = { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon), display: data[0].display_name };
+        const newCache = { ...geocodeCache, [key]: result };
         setGeocodeCache(newCache);
         localStorage.setItem('ssa_geocache', JSON.stringify(newCache));
         return result;
@@ -5353,20 +5465,37 @@ function MapModule({
     };
   }, [allCases]);
 
-  // Geocode pending cases when online
+  // Geocode pending cases — community table runs instantly, LocationIQ only when online
   useEffect(() => {
-    if (!state.online || filtered.length === 0) return;
+    if (filtered.length === 0) return;
     const missing = filtered.filter(c => {
       const key = (c.address + (state.profile?.parish || '')).toLowerCase().replace(/\s+/g, ' ').trim();
       return !geocodeCache[key];
     });
     if (missing.length === 0) return;
-    setPendingGeocode(missing.map(m => m.id));
+    // First pass: resolve via community table (offline, instant)
+    const stillMissing = [];
+    for (const c of missing) {
+      const hit = lookupCommunity(c.address);
+      if (hit) {
+        const key = (c.address + (state.profile?.parish || '')).toLowerCase().replace(/\s+/g, ' ').trim();
+        setGeocodeCache(prev => {
+          const next = { ...prev, [key]: hit };
+          localStorage.setItem('ssa_geocache', JSON.stringify(next));
+          return next;
+        });
+      } else {
+        stillMissing.push(c);
+      }
+    }
+    // Second pass: LocationIQ for anything the table did not resolve (needs online)
+    if (!state.online || stillMissing.length === 0) return;
+    setPendingGeocode(stillMissing.map(m => m.id));
     setGeocoding(true);
     (async () => {
-      for (const c of missing) {
+      for (const c of stillMissing) {
         await geocodeAddress(c.address, state.profile?.parish || 'Jamaica');
-        await new Promise(r => setTimeout(r, 350)); // Nominatim rate limit
+        await new Promise(r => setTimeout(r, 300)); // LocationIQ rate limit
         setPendingGeocode(prev => prev.filter(id => id !== c.id));
       }
       setGeocoding(false);
@@ -5494,9 +5623,15 @@ function MapModule({
     }
   }, [gpsStatus, userPos, startGPS, drawRoute]);
 
-  // External navigate to Google/Apple Maps
+  // External navigate to Google Maps using current GPS position as origin
   const openExternalNav = c => {
-    const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(c.address + ', Jamaica')}&travelmode=driving`;
+    const dest = c.lat ? encodeURIComponent(c.lat + ',' + c.lng) : encodeURIComponent(c.address + ', Jamaica');
+    let url;
+    if (userPos) {
+      url = 'https://www.google.com/maps/dir/' + userPos.lat + ',' + userPos.lng + '/' + dest;
+    } else {
+      url = 'https://www.google.com/maps/dir/?api=1&destination=' + dest + '&travelmode=driving';
+    }
     window.open(url, '_blank');
   };
   const geocodedCount = filtered.filter(c => {
