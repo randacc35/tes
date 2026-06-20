@@ -1,4 +1,4 @@
-const CACHE = 'ssa-v6';
+const CACHE = 'ssa-v7';
 const BASE = '/tes';
 
 const PRECACHE = [
@@ -45,7 +45,7 @@ self.addEventListener('fetch', e => {
   }
 
   // Never cache Nominatim geocoding or OSRM routing
-  if (url.hostname.includes('nominatim.openstreetmap.org') || url.hostname.includes('router.project-osrm.org')) {
+  if (url.hostname.includes('nominatim.openstreetmap.org') || url.hostname.includes('router.project-osrm.org') || url.hostname.includes('locationiq.com')) {
     e.respondWith(fetch(e.request).catch(() => new Response('{}', { headers: { 'Content-Type': 'application/json' } })));
     return;
   }
