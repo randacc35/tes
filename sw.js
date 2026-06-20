@@ -1,5 +1,5 @@
 const CACHE = 'ssa-v3';
-const BASE = '/ssa-companion';
+const BASE = '/tes';
 
 const PRECACHE = [
   BASE + '/',
