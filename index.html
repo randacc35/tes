@@ -49,11 +49,17 @@ input,textarea,select,button{font-family:'DM Sans',sans-serif}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-window.addEventListener('error', function(e){
+function showErr(text){
   var d=document.createElement('div');
   d.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99999;background:#b00020;color:#fff;font:12px monospace;padding:10px;white-space:pre-wrap;max-height:50vh;overflow:auto';
-  d.textContent='JS ERROR: '+e.message+'\n'+(e.filename||'')+':'+e.lineno+':'+e.colno+'\n'+(e.error&&e.error.stack||'');
+  d.textContent=text;
   document.body.appendChild(d);
+}
+window.addEventListener('error', function(e){
+  showErr('JS ERROR: '+e.message+'\n'+(e.filename||'')+':'+e.lineno+':'+e.colno+'\n'+(e.error&&e.error.stack||''));
+});
+window.addEventListener('unhandledrejection', function(e){
+  showErr('PROMISE REJECTION: '+(e.reason&&e.reason.message||e.reason)+'\n'+(e.reason&&e.reason.stack||''));
 });
 </script>
 <script type="text/babel" data-presets="react" data-type="script">
@@ -1483,10 +1489,18 @@ function App() {
   const sd=useSyncDispatch(dispatch,writeOp);
 
   useEffect(()=>{
-    sb.auth.getSession().then(({data})=>{
-      if(data.session?.user) dispatch({type:'SET_AUTH',p:data.session.user});
+    let done=false;
+    sb.auth.getSession().then(({data,error})=>{
+      done=true;
+      if(error) showErr('SUPABASE getSession ERROR: '+error.message);
+      if(data?.session?.user) dispatch({type:'SET_AUTH',p:data.session.user});
+      setAuthLoading(false);
+    }).catch(e=>{
+      done=true;
+      showErr('SUPABASE getSession THREW: '+(e.message||e));
       setAuthLoading(false);
     });
+    setTimeout(()=>{ if(!done){ showErr('SUPABASE getSession TIMED OUT after 8s — check project URL/key or network.'); setAuthLoading(false);} },8000);
     sb.auth.onAuthStateChange((_,session)=>dispatch({type:'SET_AUTH',p:session?.user||null}));
     if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
   },[]);
@@ -1528,7 +1542,11 @@ function App() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+try {
+  ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+} catch(e) {
+  showErr('RENDER ERROR: '+e.message+'\n'+(e.stack||''));
+}
 </script>
 </body>
 </html>
