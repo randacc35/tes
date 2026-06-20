@@ -1,4 +1,4 @@
-const CACHE = 'ssa-v5';
+const CACHE = 'ssa-v6';
 const BASE = '/tes';
 
 const PRECACHE = [
