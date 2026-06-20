@@ -1,4 +1,4 @@
-const CACHE = 'ssa-v4';
+const CACHE = 'ssa-v5';
 const BASE = '/tes';
 
 const PRECACHE = [
@@ -8,7 +8,6 @@ const PRECACHE = [
   'https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Sora:wght@600;700&display=swap',
   'https://unpkg.com/react@18/umd/react.production.min.js',
   'https://unpkg.com/react-dom@18/umd/react-dom.production.min.js',
-  'https://unpkg.com/@babel/standalone/babel.min.js',
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
@@ -64,6 +63,21 @@ self.addEventListener('fetch', e => {
           return cached || network;
         });
       })
+    );
+    return;
+  }
+
+  // Network-first for the app shell (index.html) so updates always reach users
+  const isAppShell = e.request.mode === 'navigate' || url.pathname === BASE + '/' || url.pathname === BASE + '/index.html';
+  if (isAppShell) {
+    e.respondWith(
+      fetch(e.request).then(resp => {
+        if (resp && resp.status === 200) {
+          const clone = resp.clone();
+          caches.open(CACHE).then(c => c.put(e.request, clone));
+        }
+        return resp;
+      }).catch(() => caches.match(e.request).then(c => c || caches.match(BASE + '/index.html')))
     );
     return;
   }
