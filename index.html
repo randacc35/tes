@@ -132,11 +132,52 @@ async function sbSelect(table, officerId) {
   if (error) throw error;
   return data || [];
 }
+async function sbGetProfile(officerId) {
+  const {
+    data,
+    error
+  } = await sb.from('profiles').select('*').eq('officer_id', officerId).maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+async function sbSaveProfile(officerId, profile) {
+  const row = {
+    officer_id: officerId,
+    name: profile.name,
+    employee_id: profile.employeeId,
+    email: profile.email,
+    phone: profile.phone,
+    zone: profile.zone,
+    zone_name: profile.zoneName,
+    parish: profile.parish,
+    role: profile.role,
+    updated_at: new Date().toISOString()
+  };
+  const {
+    error
+  } = await sb.from('profiles').upsert(row, {
+    onConflict: 'officer_id'
+  });
+  if (error) throw error;
+}
+function profileFromRow(row) {
+  if (!row) return null;
+  return {
+    name: row.name,
+    employeeId: row.employee_id,
+    email: row.email,
+    phone: row.phone,
+    zone: row.zone,
+    zoneName: row.zone_name,
+    parish: row.parish,
+    role: row.role
+  };
+}
 async function flushQueue() {
   const ops = await dequeueAll();
   if (!ops.length) return 0;
   for (const op of ops) {
-    if (op.action === 'upsert') await sbUpsert(op.table, op.row);else if (op.action === 'delete') await sbDelete(op.table, op.id);
+    if (op.action === 'upsert') await sbUpsert(op.table, op.row);else if (op.action === 'delete') await sbDelete(op.table, op.id);else if (op.action === 'profile_upsert') await sbSaveProfile(op.officerId, op.profile);
   }
   await clearQueue();
   return ops.length;
@@ -4825,7 +4866,8 @@ function SettingsModule({
   state,
   dispatch,
   onSignOut,
-  syncNow
+  syncNow,
+  onSaveProfile
 }) {
   const [prof, setProf] = useState(state.profile);
   const [saved, setSaved] = useState(false);
@@ -4836,10 +4878,7 @@ function SettingsModule({
     [k]: v
   }));
   const save = () => {
-    dispatch({
-      type: 'SET_PROFILE',
-      p: prof
-    });
+    onSaveProfile(prof);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -6014,11 +6053,37 @@ function App() {
   const [state, dispatch] = useReducer(reducer, INIT);
   const [page, setPage] = useState('dashboard');
   const [authLoading, setAuthLoading] = useState(true);
+  const [profileChecked, setProfileChecked] = useState(false);
   const {
     writeOp,
     syncNow
   } = useSync(state, dispatch);
   const sd = useSyncDispatch(dispatch, writeOp);
+  const saveProfile = useCallback(async p => {
+    dispatch({
+      type: 'SET_PROFILE',
+      p
+    });
+    const oid = state.authUser?.id;
+    if (!oid) return;
+    if (navigator.onLine) {
+      try {
+        await sbSaveProfile(oid, p);
+        return;
+      } catch (e) {
+        showErr('Profile sync failed, will retry: ' + (e.message || e));
+      }
+    }
+    try {
+      await enqueue({
+        action: 'profile_upsert',
+        officerId: oid,
+        profile: p
+      });
+    } catch (e) {
+      showErr('Could not queue profile for sync: ' + (e.message || e));
+    }
+  }, [state.authUser]);
   useEffect(() => {
     let done = false;
     sb.auth.getSession().then(({
@@ -6030,16 +6095,18 @@ function App() {
       if (data?.session?.user) dispatch({
         type: 'SET_AUTH',
         p: data.session.user
-      });
+      });else setProfileChecked(true);
       setAuthLoading(false);
     }).catch(e => {
       done = true;
       showErr('SUPABASE getSession THREW: ' + (e.message || e));
+      setProfileChecked(true);
       setAuthLoading(false);
     });
     setTimeout(() => {
       if (!done) {
         showErr('SUPABASE getSession TIMED OUT after 8s — check project URL/key or network.');
+        setProfileChecked(true);
         setAuthLoading(false);
       }
     }, 8000);
@@ -6049,6 +6116,33 @@ function App() {
     }));
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
   }, []);
+
+  // Once authenticated, try pulling the profile from Supabase before deciding whether to show ProfileSetup
+  useEffect(() => {
+    const oid = state.authUser?.id;
+    if (!oid) return;
+    let cancelled = false;
+    if (!navigator.onLine) {
+      setProfileChecked(true);
+      return;
+    }
+    sbGetProfile(oid).then(row => {
+      if (cancelled) return;
+      const remote = profileFromRow(row);
+      if (remote) dispatch({
+        type: 'SET_PROFILE',
+        p: remote
+      });
+      setProfileChecked(true);
+    }).catch(e => {
+      if (cancelled) return;
+      showErr('Profile lookup failed, using local data: ' + (e.message || e));
+      setProfileChecked(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [state.authUser?.id]);
   if (authLoading) return /*#__PURE__*/React.createElement("div", {
     style: {
       display: 'flex',
@@ -6084,12 +6178,38 @@ function App() {
       p: u
     })
   });
+  if (!profileChecked) return /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      height: '100vh',
+      flexDirection: 'column',
+      gap: 16
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 48,
+      height: 48,
+      background: C.primaryLight,
+      borderRadius: 12,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center'
+    }
+  }, /*#__PURE__*/React.createElement(Icon, {
+    name: "clipboard",
+    size: 24,
+    color: C.primary
+  })), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: C.textMuted,
+      fontSize: 14
+    }
+  }, "Loading your profile…"));
   if (!state.profile) return /*#__PURE__*/React.createElement(ProfileSetup, {
     authUser: state.authUser,
-    onSave: p => dispatch({
-      type: 'SET_PROFILE',
-      p
-    })
+    onSave: saveProfile
   });
   const hasSyncBar = !state.online || state.syncPending > 0 || state.syncing;
   const signOut = async () => {
@@ -6137,7 +6257,8 @@ function App() {
       state: state,
       dispatch: sd,
       onSignOut: signOut,
-      syncNow: syncNow
+      syncNow: syncNow,
+      onSaveProfile: saveProfile
     }),
     more: /*#__PURE__*/React.createElement(MoreMenu, {
       onNav: setPage
