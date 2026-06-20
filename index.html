@@ -49,7 +49,7 @@ input,textarea,select,button{font-family:'DM Sans',sans-serif}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="text/babel" data-presets="react">
-const { useState, useReducer, useEffect, useRef, useCallback } = React;
+const { useState, useReducer, useEffect, useRef, useCallback, useMemo } = React;
 
 // ── SUPABASE ─────────────────────────────────────────────────────────────────
 const sb = supabase.createClient(
@@ -1061,20 +1061,19 @@ function MapModule({ state }) {
   const userMarker = useRef(null);
   const watchId = useRef(null);
   const [userPos, setUserPos] = useState(null);
-  const [gpsStatus, setGpsStatus] = useState('idle'); // idle|watching|error
-  const [activeCase, setActiveCase] = useState(null); // {id, label, address, lat, lng, type}
+  const [gpsStatus, setGpsStatus] = useState('idle');
+  const [activeCase, setActiveCase] = useState(null);
   const [navigating, setNavigating] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
-  const [filter, setFilter] = useState('all'); // all|path|grants|deliveries|clients
-  const [mapLayer, setMapLayer] = useState('street'); // street|satellite
-  const [pendingGeocode, setPendingGeocode] = useState([]);
+  const [filter, setFilter] = useState('all');
+  const [mapLayer, setMapLayer] = useState('street');
   const [geocodeCache, setGeocodeCache] = useState(() => {
     try { return JSON.parse(localStorage.getItem('ssa_geocache') || '{}'); } catch { return {}; }
   });
   const tileLayerRef = useRef(null);
 
   // Build unified case list from all modules
-  const allCases = React.useMemo(() => {
+  const allCases = useMemo(() => {
     const list = [];
     (state.pathCases || []).forEach(p => {
       const addr = p.residential_address || p.community || '';
@@ -1182,25 +1181,26 @@ function MapModule({ state }) {
     return () => { delete window._ssaNav; };
   }, [allCases]);
 
-  // Geocode pending cases when online
+  // Geocode pending cases when online — runs when filtered cases or online status changes
+  const geocodingRef = useRef(false);
   useEffect(() => {
-    if (!state.online || filtered.length === 0) return;
+    if (!state.online || filtered.length === 0 || geocodingRef.current) return;
     const missing = filtered.filter(c => {
       const key = (c.address + (state.profile?.parish || '')).toLowerCase().replace(/\s+/g, ' ').trim();
       return !geocodeCache[key];
     });
     if (missing.length === 0) return;
-    setPendingGeocode(missing.map(m => m.id));
+    geocodingRef.current = true;
     setGeocoding(true);
     (async () => {
       for (const c of missing) {
         await geocodeAddress(c.address, state.profile?.parish || 'Jamaica');
-        await new Promise(r => setTimeout(r, 350)); // Nominatim rate limit
-        setPendingGeocode(prev => prev.filter(id => id !== c.id));
+        await new Promise(r => setTimeout(r, 400));
       }
       setGeocoding(false);
+      geocodingRef.current = false;
     })();
-  }, [filtered.length, state.online]);
+  }, [state.online, allCases.length]);
 
   // GPS tracking
   const startGPS = useCallback(() => {
@@ -1475,12 +1475,16 @@ function App() {
   const sd=useSyncDispatch(dispatch,writeOp);
 
   useEffect(()=>{
+    // Timeout fallback — never stay stuck on loading screen
+    const timeout = setTimeout(()=>setAuthLoading(false), 5000);
     sb.auth.getSession().then(({data})=>{
-      if(data.session?.user) dispatch({type:'SET_AUTH',p:data.session.user});
+      if(data?.session?.user) dispatch({type:'SET_AUTH',p:data.session.user});
       setAuthLoading(false);
-    });
-    sb.auth.onAuthStateChange((_,session)=>dispatch({type:'SET_AUTH',p:session?.user||null}));
+      clearTimeout(timeout);
+    }).catch(()=>{ setAuthLoading(false); clearTimeout(timeout); });
+    const { data: authData } = sb.auth.onAuthStateChange((_,session)=>dispatch({type:'SET_AUTH',p:session?.user||null}));
     if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+    return ()=>{ authData?.subscription?.unsubscribe(); clearTimeout(timeout); };
   },[]);
 
   if(authLoading) return <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',flexDirection:'column',gap:16}}><div style={{width:48,height:48,background:C.primaryLight,borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center'}}><Icon name="clipboard" size={24} color={C.primary}/></div><p style={{color:C.textMuted,fontSize:14}}>Loading…</p></div>;
@@ -1490,18 +1494,19 @@ function App() {
   const hasSyncBar=!state.online||state.syncPending>0||state.syncing;
   const signOut=async()=>{await sb.auth.signOut();dispatch({type:'SET_AUTH',p:null});dispatch({type:'RESET'});};
 
-  const pages={
-    dashboard:<Dashboard state={state} onNav={setPage} onSync={syncNow}/>,
-    clients:<ClientsModule state={state} dispatch={sd}/>,
-    path:<PathModule state={state} dispatch={sd}/>,
-    grants:<GrantsModule state={state} dispatch={sd}/>,
-    deliveries:<DeliveriesModule state={state} dispatch={sd}/>,
-    map:<MapModule state={state}/>,
-    calendar:<CalendarModule state={state}/>,
-    reports:<ReportsModule state={state}/>,
-    settings:<SettingsModule state={state} dispatch={sd} onSignOut={signOut} syncNow={syncNow}/>,
-    more:<MoreMenu onNav={setPage}/>,
+  const pageMap = {
+    dashboard:()=><Dashboard state={state} onNav={setPage} onSync={syncNow}/>,
+    clients:()=><ClientsModule state={state} dispatch={sd}/>,
+    path:()=><PathModule state={state} dispatch={sd}/>,
+    grants:()=><GrantsModule state={state} dispatch={sd}/>,
+    deliveries:()=><DeliveriesModule state={state} dispatch={sd}/>,
+    map:()=><MapModule state={state}/>,
+    calendar:()=><CalendarModule state={state}/>,
+    reports:()=><ReportsModule state={state}/>,
+    settings:()=><SettingsModule state={state} dispatch={sd} onSignOut={signOut} syncNow={syncNow}/>,
+    more:()=><MoreMenu onNav={setPage}/>,
   };
+  const ActivePage = (pageMap[page] || pageMap.dashboard);
 
   return (
     <div style={{maxWidth:600,margin:'0 auto',minHeight:'100vh',background:C.bg,position:'relative'}}>
@@ -1512,7 +1517,7 @@ function App() {
           <div style={{flex:1}}><div style={{fontSize:13,fontFamily:"'Sora',sans-serif",fontWeight:700,color:C.primaryDark,lineHeight:1}}>SSA Companion</div><div style={{fontSize:10,color:C.textMuted}}>{state.profile.name} · Zone {state.profile.zone}</div></div>
           <span className="online-dot" style={{background:state.online?C.success:C.danger}} title={state.online?'Online':'Offline'}/>
         </div>
-        {pages[page]||pages.dashboard}
+        {ActivePage()}
       </div>
       <BottomNav active={page} onChange={setPage}/>
       <InstallBanner/>
