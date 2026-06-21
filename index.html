@@ -1844,10 +1844,23 @@ const ST_THOMAS_POST_OFFICES = [
   { name: 'Manchioneal Post Office', community: 'Manchioneal' },
 ];
 
-// Resolve lat/lng from community name
+// Resolve lat/lng from community name (exact match)
 function resolveLatLng(community) {
   const c = ST_THOMAS_COMMUNITIES[community];
   return c ? { lat: c.lat, lng: c.lng } : null;
+}
+
+// Fuzzy community lookup — used by the map geocoding effect
+function lookupCommunity(address) {
+  if (!address) return null;
+  const norm = address.toLowerCase().trim();
+  // Exact community name match first
+  for (const [name, data] of Object.entries(ST_THOMAS_COMMUNITIES)) {
+    if (norm.includes(name.toLowerCase())) {
+      return { lat: data.lat, lng: data.lng, display: name };
+    }
+  }
+  return null;
 }
 
 // ── LOCATION PICKER COMPONENT ─────────────────────────────────────────────────
@@ -6276,7 +6289,22 @@ function App() {
       type: 'SET_AUTH',
       p: session?.user || null
     }));
-    if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').then(reg => {
+        // Tell a waiting SW to take over immediately
+        if (reg.waiting) reg.waiting.postMessage('skipWaiting');
+        reg.addEventListener('updatefound', () => {
+          const nw = reg.installing;
+          if (nw) nw.addEventListener('statechange', () => {
+            if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+              nw.postMessage('skipWaiting');
+              // Reload once the new SW has claimed the page
+              navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload(), { once: true });
+            }
+          });
+        });
+      }).catch(() => {});
+    }
   }, []);
 
   // Once authenticated, try pulling the profile from Supabase before deciding whether to show ProfileSetup
