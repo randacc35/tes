@@ -108,12 +108,42 @@ async function clearQueue() {
 }
 
 // ── SUPABASE HELPERS ──────────────────────────────────────────────────────────
+// Per-table column whitelist. Strips any React state fields that have no DB
+// column yet, so Supabase never rejects an upsert with "unknown column" errors.
+// Once the SQL migration is run, the new columns appear here automatically.
+const TABLE_COLUMNS = {
+  ssa_clients: ['id','officer_id','name','dob','nis','trn','phone',
+    'address','parish','community','street','lot_number','lat','lng',
+    'directions','created_at','updated_at'],
+  ssa_path_cases: ['id','officer_id','client_id','client_name','case_type',
+    'status','residential_address','mailing_address',
+    'parish','community','street','lot_number','lat','lng',
+    'directions','members','employment','income','assets',
+    'verification_flags','visit_date','next_review','notes',
+    'payee_name','payee_trn','bank_name','account_number','dob','trn','nis',
+    'created_at','updated_at'],
+  ssa_grants: ['id','officer_id','client_id','client_name','grant_type',
+    'status','address','parish','community','street','lot_number','lat','lng',
+    'directions','marital_status','dependants','employment','income',
+    'purpose','amount','method','dob','trn','nis','phone','telephone',
+    'household_members','assets','notes','created_at','updated_at'],
+  ssa_deliveries: ['id','officer_id','post_office','post_office_community',
+    'lat','lng','delivery_date','batch_ref','cheque_count',
+    'receipt_details','notes','status','created_at','updated_at'],
+  ssa_post_offices: ['id','officer_id','name','community','lat','lng',
+    'created_at','updated_at'],
+};
+
+function sanitiseRow(table, row) {
+  const allowed = TABLE_COLUMNS[table];
+  if (!allowed) return row;
+  const clean = {};
+  for (const key of allowed) { if (key in row) clean[key] = row[key]; }
+  return clean;
+}
+
 async function sbUpsert(table, row) {
-  const {
-    error
-  } = await sb.from(table).upsert(row, {
-    onConflict: 'id'
-  });
+  const { error } = await sb.from(table).upsert(sanitiseRow(table, row), { onConflict: 'id' });
   if (error) throw error;
 }
 async function sbDelete(table, id) {
@@ -176,11 +206,23 @@ function profileFromRow(row) {
 async function flushQueue() {
   const ops = await dequeueAll();
   if (!ops.length) return 0;
+  const failed = [];
   for (const op of ops) {
-    if (op.action === 'upsert') await sbUpsert(op.table, op.row);else if (op.action === 'delete') await sbDelete(op.table, op.id);else if (op.action === 'profile_upsert') await sbSaveProfile(op.officerId, op.profile);
+    try {
+      if (op.action === 'upsert') await sbUpsert(op.table, op.row);
+      else if (op.action === 'delete') await sbDelete(op.table, op.id);
+      else if (op.action === 'profile_upsert') await sbSaveProfile(op.officerId, op.profile);
+    } catch(e) {
+      // Track retry count; discard after 5 attempts to stop infinite loops
+      const retries = (op._retries || 0) + 1;
+      if (retries < 5) failed.push({ ...op, _retries: retries });
+      else console.warn('Dropping op after 5 retries:', op.table, op.action, e);
+    }
   }
   await clearQueue();
-  return ops.length;
+  // Re-enqueue only the ops that failed and haven't hit the retry limit
+  for (const op of failed) await enqueue(op);
+  return ops.length - failed.length;
 }
 
 // ── COLOURS ───────────────────────────────────────────────────────────────────
@@ -1299,12 +1341,11 @@ function useSync(state, dispatch) {
       p: true
     });
     try {
-      await flushQueue();
-      dispatch({
-        type: 'SET_PENDING',
-        p: 0
-      });
-      await pull();
+      const synced = await flushQueue();
+      // Re-check actual queue length (some ops may have been re-queued after retries)
+      const remaining = await dequeueAll();
+      dispatch({ type: 'SET_PENDING', p: remaining.length });
+      if (synced > 0 || remaining.length === 0) await pull();
     } catch (e) {
       console.warn('sync err', e);
     }
