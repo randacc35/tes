@@ -1801,6 +1801,132 @@ const GRANT_METHOD = {
 };
 const ASSETS = ['Laptop/Computer', 'Desktop Computer', 'Tablet', 'Car/Motor Vehicle', 'Motorbike', 'TV', 'Refrigerator', 'Freezer', 'Washing Machine', 'Microwave', 'Stove', 'Air Conditioner', 'DVD Player', 'Stereo System', 'Cable TV', 'Internet Connection', 'Land Phone', 'Cell Phone', 'Generator', 'Farm Animal'];
 
+// ── ST. THOMAS LOCATION DATA ──────────────────────────────────────────────────
+// Parish is fixed: St. Thomas. Communities with coords + common streets/areas.
+const ST_THOMAS_PARISH = 'St. Thomas';
+
+const ST_THOMAS_COMMUNITIES = {
+  'Morant Bay': { lat: 17.8820, lng: -76.4090, streets: ['Church Street', 'Queen Street', 'King Street', 'High Street', 'Gayle Street', 'West Street', 'East Street', 'Market Street', 'Fort Street', 'Harbour Street', 'Barracks Road', 'Bell Lane', 'Duck Street', 'Blythe Street'] },
+  'Yallahs': { lat: 17.8750, lng: -76.5640, streets: ['Main Road', 'Market Lane', 'Bay Road', 'School Road', 'Church Road', 'Back Road'] },
+  'Port Morant': { lat: 17.8910, lng: -76.3270, streets: ['Harbour Street', 'Main Street', 'Sea Road', 'Church Lane', 'School Lane'] },
+  'Lyssons': { lat: 17.8706, lng: -76.4850, streets: ['Main Road', 'Beach Road', 'Lyssons Drive'] },
+  'Seaforth': { lat: 17.9012, lng: -76.4631, streets: ['Main Road', 'School Road', 'Church Road', 'Back Road'] },
+  'Golden Grove': { lat: 17.9042, lng: -76.5093, streets: ['Main Road', 'Golden Grove Road', 'School Lane'] },
+  'Bull Bay': { lat: 17.9300, lng: -76.6680, streets: ['Main Road', 'Bull Bay Road', 'Sea View Drive', 'Church Road'] },
+  'Cedar Valley': { lat: 18.0001, lng: -76.5167, streets: ['Main Road', 'Valley Road'] },
+  'Bath': { lat: 18.0057, lng: -76.3715, streets: ['Main Street', 'Fountain Road', 'Bath Road', 'Church Street'] },
+  'Dalvey': { lat: 17.9300, lng: -76.3800, streets: ['Main Road', 'Dalvey Road'] },
+  'Duckenfield': { lat: 17.9200, lng: -76.3500, streets: ['Main Road', 'Factory Road'] },
+  'Manchioneal': { lat: 18.0450, lng: -76.2900, streets: ['Main Road', 'Sea Road', 'Back Road'] },
+  'Retreat': { lat: 17.9800, lng: -76.3600, streets: ['Main Road', 'Retreat Road'] },
+  'Albion': { lat: 17.9600, lng: -76.4200, streets: ['Main Road', 'Albion Road'] },
+  'White Horses': { lat: 17.8550, lng: -76.5000, streets: ['Main Road', 'White Horses Drive'] },
+  'Rozelle': { lat: 17.9100, lng: -76.4500, streets: ['Main Road', 'Rozelle Drive'] },
+  'Trinityville': { lat: 18.0200, lng: -76.4700, streets: ['Main Road', 'Trinity Road'] },
+  'Leith Hall': { lat: 17.9700, lng: -76.4900, streets: ['Main Road', 'Leith Hall Drive'] },
+  'Pamphret': { lat: 17.9500, lng: -76.3300, streets: ['Main Road', 'Pamphret Road'] },
+  'Wheelerfield': { lat: 17.9000, lng: -76.4000, streets: ['Main Road', 'Wheelerfield Drive'] },
+  'Prospect': { lat: 17.8800, lng: -76.4400, streets: ['Main Road', 'Prospect Drive'] },
+  'Sunning Hill': { lat: 17.9200, lng: -76.5100, streets: ['Main Road', 'Sunning Hill Drive'] },
+  'Cuna': { lat: 17.9900, lng: -76.3400, streets: ['Main Road'] },
+  'Stokes Hall': { lat: 17.9700, lng: -76.3200, streets: ['Main Road', 'Stokes Hall Road'] },
+  'St. Thomas (Other)': { lat: 17.9300, lng: -76.4000, streets: ['Main Road'] }
+};
+
+const ST_THOMAS_POST_OFFICES = [
+  { name: 'Morant Bay Post Office', community: 'Morant Bay' },
+  { name: 'Yallahs Post Office', community: 'Yallahs' },
+  { name: 'Port Morant Post Office', community: 'Port Morant' },
+  { name: 'Bath Post Office', community: 'Bath' },
+  { name: 'Seaforth Post Office', community: 'Seaforth' },
+  { name: 'White Horses Post Office', community: 'White Horses' },
+  { name: 'Bull Bay Post Office', community: 'Bull Bay' },
+  { name: 'Manchioneal Post Office', community: 'Manchioneal' },
+];
+
+// Resolve lat/lng from community name
+function resolveLatLng(community) {
+  const c = ST_THOMAS_COMMUNITIES[community];
+  return c ? { lat: c.lat, lng: c.lng } : null;
+}
+
+// ── LOCATION PICKER COMPONENT ─────────────────────────────────────────────────
+// Renders parish (locked), community dropdown, street/area text, lot number.
+// Calls onChange({ parish, community, street, lot_number, lat, lng }) on every change.
+function LocationPicker({ value, onChange }) {
+  const parish = ST_THOMAS_PARISH;
+  const community = value.community || '';
+  const street = value.street || '';
+  const lot_number = value.lot_number || '';
+  const communityNames = Object.keys(ST_THOMAS_COMMUNITIES);
+  const streets = community && ST_THOMAS_COMMUNITIES[community] ? ST_THOMAS_COMMUNITIES[community].streets : [];
+
+  const update = (patch) => {
+    const next = { ...value, ...patch, parish };
+    // Resolve coords when community changes
+    if (patch.community !== undefined) {
+      const coords = resolveLatLng(patch.community);
+      next.lat = coords ? coords.lat : null;
+      next.lng = coords ? coords.lng : null;
+      next.street = ''; // reset street when community changes
+    }
+    onChange(next);
+  };
+
+  return React.createElement(React.Fragment, null,
+    React.createElement(Field, { label: 'Parish' },
+      React.createElement('div', {
+        style: { padding: '9px 12px', border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 14, background: '#f5f5f5', color: C.textMuted }
+      }, parish, ' ', React.createElement('span', { style: { fontSize: 11 } }, '(fixed)'))
+    ),
+    React.createElement(Field, { label: 'Community', required: true },
+      React.createElement('select', {
+        value: community,
+        onChange: e => update({ community: e.target.value }),
+        style: { width: '100%', padding: '9px 12px', border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 14, background: C.surface }
+      },
+        React.createElement('option', { value: '' }, '— select community —'),
+        communityNames.map(n => React.createElement('option', { key: n, value: n }, n))
+      )
+    ),
+    community ? React.createElement(Field, { label: 'Street / Road', hint: 'Select from list or type a custom street name' },
+      React.createElement('select', {
+        value: street,
+        onChange: e => update({ street: e.target.value }),
+        style: { width: '100%', padding: '9px 12px', border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 14, background: C.surface }
+      },
+        React.createElement('option', { value: '' }, '— select street —'),
+        streets.map(s => React.createElement('option', { key: s, value: s }, s)),
+        React.createElement('option', { value: '__other__' }, 'Other (type below)')
+      ),
+      (street === '__other__' || (street && !streets.includes(street))) &&
+        React.createElement('input', {
+          type: 'text',
+          value: street === '__other__' ? '' : street,
+          onChange: e => update({ street: e.target.value }),
+          placeholder: 'Type street / road name',
+          style: { width: '100%', padding: '9px 12px', border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 14, background: C.surface, marginTop: 6 }
+        })
+    ) : null,
+    React.createElement(Field, { label: 'Lot / House Number', hint: 'e.g. Lot 5, House 12, Apt 3B' },
+      React.createElement('input', {
+        type: 'text',
+        value: lot_number,
+        onChange: e => update({ lot_number: e.target.value }),
+        placeholder: 'Lot 5',
+        style: { width: '100%', padding: '9px 12px', border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 14, background: C.surface }
+      })
+    ),
+    (value.lat && value.lng) ? React.createElement('div', {
+      style: { display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', background: C.primaryLight, borderRadius: 6, marginBottom: 14, fontSize: 12, color: C.primaryDark }
+    }, React.createElement(Icon, { name: 'mapPin', size: 13, color: C.primary }),
+      `Pin set: ${community}${street && street !== '__other__' ? ', ' + street : ''}` 
+    ) : (community ? React.createElement('div', {
+      style: { fontSize: 12, color: C.warning, marginBottom: 14 }
+    }, '⚠ Community not in map index — pin will need manual confirmation') : null)
+  );
+}
+
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
 function Dashboard({
   state,
@@ -2024,7 +2150,8 @@ function Dashboard({
 // ── CLIENTS ───────────────────────────────────────────────────────────────────
 function ClientsModule({
   state,
-  dispatch
+  dispatch,
+  onAfterSave
 }) {
   const [view, setView] = useState('list');
   const [sel, setSel] = useState(null);
@@ -2032,19 +2159,11 @@ function ClientsModule({
   const [conf, setConf] = useState(null);
   const filt = state.clients.filter(c => (c.name || '').toLowerCase().includes(search.toLowerCase()) || (c.community || '').toLowerCase().includes(search.toLowerCase()));
   const save = c => {
-    dispatch(c.id ? {
-      type: 'UPD_CLIENT',
-      p: c
-    } : {
-      type: 'ADD_CLIENT',
-      p: {
-        ...c,
-        id: uid(),
-        created_at: new Date().toISOString()
-      }
-    });
+    const saved = c.id ? c : { ...c, id: uid(), created_at: new Date().toISOString() };
+    dispatch(c.id ? { type: 'UPD_CLIENT', p: saved } : { type: 'ADD_CLIENT', p: saved });
     setView('list');
     setSel(null);
+    if (onAfterSave) onAfterSave(saved);
   };
   if (view === 'form') return /*#__PURE__*/React.createElement(ClientForm, {
     client: sel,
@@ -2211,100 +2330,52 @@ function ClientForm({
     nis: '',
     trn: '',
     phone: '',
-    address: '',
+    parish: ST_THOMAS_PARISH,
     community: '',
+    street: '',
+    lot_number: '',
+    lat: null,
+    lng: null,
     directions: ''
   });
-  const set = k => v => setF(p => ({
-    ...p,
-    [k]: v
-  }));
-  return /*#__PURE__*/React.createElement("div", {
-    style: {
-      padding: '16px 16px 100px'
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: 10,
-      marginBottom: 20
-    }
-  }, /*#__PURE__*/React.createElement(BackBtn, {
-    onClick: onCancel
-  }), /*#__PURE__*/React.createElement("h2", {
-    style: {
-      fontSize: 18,
-      color: C.primaryDark
-    }
-  }, client ? 'Edit Client' : 'Add Client')), /*#__PURE__*/React.createElement(Field, {
-    label: "Full Name",
-    required: true
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: f.name,
-    onChange: set('name'),
-    placeholder: "Full legal name"
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Date of Birth"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    type: "date",
-    value: f.dob,
-    onChange: set('dob')
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "NIS"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: f.nis,
-    onChange: set('nis'),
-    placeholder: "National Insurance Scheme number"
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "TRN"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: f.trn,
-    onChange: set('trn'),
-    placeholder: "Taxpayer Registration Number"
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Phone"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: f.phone,
-    onChange: set('phone')
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Residential Address"
-  }, /*#__PURE__*/React.createElement(Txt, {
-    value: f.address,
-    onChange: set('address'),
-    rows: 2
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Community"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: f.community,
-    onChange: set('community')
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Directions to House"
-  }, /*#__PURE__*/React.createElement(Txt, {
-    value: f.directions,
-    onChange: set('directions'),
-    rows: 3
-  })), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'flex',
-      gap: 10,
-      marginTop: 8
-    }
-  }, /*#__PURE__*/React.createElement(Btn, {
-    variant: "ghost",
-    onClick: onCancel,
-    style: {
-      flex: 1,
-      justifyContent: 'center'
-    }
-  }, "Cancel"), /*#__PURE__*/React.createElement(Btn, {
-    onClick: () => onSave(f),
-    disabled: !f.name,
-    style: {
-      flex: 1,
-      justifyContent: 'center'
-    }
-  }, "Save Client")));
+  const set = k => v => setF(p => ({ ...p, [k]: v }));
+  const locVal = { parish: f.parish, community: f.community, street: f.street, lot_number: f.lot_number, lat: f.lat, lng: f.lng };
+  const setLoc = v => setF(p => ({ ...p, ...v }));
+  // Build address string for display/map
+  const addressStr = [f.lot_number, f.street, f.community, ST_THOMAS_PARISH].filter(Boolean).join(', ');
+  return React.createElement("div", { style: { padding: '16px 16px 100px' } },
+    React.createElement("div", { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 } },
+      React.createElement(BackBtn, { onClick: onCancel }),
+      React.createElement("h2", { style: { fontSize: 18, color: C.primaryDark } }, client ? 'Edit Client' : 'Add Client')
+    ),
+    React.createElement(Field, { label: "Full Name", required: true },
+      React.createElement(Inp, { value: f.name, onChange: set('name'), placeholder: "Full legal name" })
+    ),
+    React.createElement(Field, { label: "Date of Birth" },
+      React.createElement(Inp, { type: "date", value: f.dob, onChange: set('dob') })
+    ),
+    React.createElement(Field, { label: "NIS" },
+      React.createElement(Inp, { value: f.nis, onChange: set('nis'), placeholder: "National Insurance Scheme number" })
+    ),
+    React.createElement(Field, { label: "TRN" },
+      React.createElement(Inp, { value: f.trn, onChange: set('trn'), placeholder: "Taxpayer Registration Number" })
+    ),
+    React.createElement(Field, { label: "Phone" },
+      React.createElement(Inp, { value: f.phone, onChange: set('phone') })
+    ),
+    React.createElement(LocationPicker, { value: locVal, onChange: setLoc }),
+    React.createElement(Field, { label: "Directions to House", hint: "Landmark, turn-by-turn notes for fieldwork" },
+      React.createElement(Txt, { value: f.directions, onChange: set('directions'), rows: 3 })
+    ),
+    React.createElement("div", { style: { display: 'flex', gap: 10, marginTop: 8 } },
+      React.createElement(Btn, { variant: "ghost", onClick: onCancel, style: { flex: 1, justifyContent: 'center' } }, "Cancel"),
+      React.createElement(Btn, {
+        onClick: () => onSave({ ...f, address: addressStr }),
+        disabled: !f.name || !f.community,
+        style: { flex: 1, justifyContent: 'center' }
+      }, "Save & Confirm Pin")
+    )
+  );
 }
 function ClientDetail({
   client,
@@ -2423,7 +2494,8 @@ function ClientDetail({
 // ── PATH MODULE ───────────────────────────────────────────────────────────────
 function PathModule({
   state,
-  dispatch
+  dispatch,
+  onAfterSave
 }) {
   const [view, setView] = useState('list');
   const [sel, setSel] = useState(null);
@@ -2433,19 +2505,11 @@ function PathModule({
   const [conf, setConf] = useState(null);
   const filt = state.pathCases.filter(p => (g(p, 'client_name', 'clientName') || '').toLowerCase().includes(search.toLowerCase()) || (p.community || '').toLowerCase().includes(search.toLowerCase())).filter(p => !fSt || p.status === fSt).filter(p => !fTy || g(p, 'case_type', 'caseType') === fTy);
   const save = c => {
-    dispatch(c.id ? {
-      type: 'UPD_PATH',
-      p: c
-    } : {
-      type: 'ADD_PATH',
-      p: {
-        ...c,
-        id: uid(),
-        created_at: new Date().toISOString()
-      }
-    });
+    const saved = c.id ? c : { ...c, id: uid(), created_at: new Date().toISOString() };
+    dispatch(c.id ? { type: 'UPD_PATH', p: saved } : { type: 'ADD_PATH', p: saved });
     setView('list');
     setSel(null);
+    if (onAfterSave) onAfterSave(saved);
   };
   if (view === 'form') return /*#__PURE__*/React.createElement(PathForm, {
     pathCase: sel,
@@ -2633,7 +2697,12 @@ function PathForm({
     programme: 'PATH',
     residential_address: '',
     mailing_address: '',
+    parish: ST_THOMAS_PARISH,
     community: '',
+    street: '',
+    lot_number: '',
+    lat: null,
+    lng: null,
     directions: '',
     household_members: [],
     house_tenure: '',
@@ -2672,7 +2741,12 @@ function PathForm({
       client_id: cid,
       client_name: cl.name,
       residential_address: cl.address || '',
+      parish: cl.parish || ST_THOMAS_PARISH,
       community: cl.community || '',
+      street: cl.street || '',
+      lot_number: cl.lot_number || '',
+      lat: cl.lat || null,
+      lng: cl.lng || null,
       directions: cl.directions || ''
     }));else set('client_id')(cid);
   };
@@ -2800,30 +2874,16 @@ function PathForm({
   }, /*#__PURE__*/React.createElement(Inp, {
     value: f.payment_option,
     onChange: set('payment_option')
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Residential Address"
-  }, /*#__PURE__*/React.createElement(Txt, {
-    value: f.residential_address,
-    onChange: set('residential_address'),
-    rows: 2
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Mailing Address"
-  }, /*#__PURE__*/React.createElement(Txt, {
-    value: f.mailing_address,
-    onChange: set('mailing_address'),
-    rows: 2
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Community"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: f.community,
-    onChange: set('community')
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Directions to House"
-  }, /*#__PURE__*/React.createElement(Txt, {
-    value: f.directions,
-    onChange: set('directions'),
-    rows: 3
-  }))), tab === 1 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+  })), React.createElement(LocationPicker, {
+    value: { parish: f.parish, community: f.community, street: f.street, lot_number: f.lot_number, lat: f.lat, lng: f.lng },
+    onChange: v => setF(p => ({ ...p, ...v, residential_address: [v.lot_number, v.street, v.community, ST_THOMAS_PARISH].filter(Boolean).join(', ') }))
+  }),
+  React.createElement(Field, { label: "Mailing Address", hint: "If different from residential" },
+    React.createElement(Txt, { value: f.mailing_address, onChange: set('mailing_address'), rows: 2 })
+  ),
+  React.createElement(Field, { label: "Directions to House", hint: "Landmarks, turns, field notes" },
+    React.createElement(Txt, { value: f.directions, onChange: set('directions'), rows: 3 })
+  )), tab === 1 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     style: {
       display: 'flex',
       justifyContent: 'space-between',
@@ -3318,7 +3378,8 @@ function PathDetail({
 // ── GRANTS ────────────────────────────────────────────────────────────────────
 function GrantsModule({
   state,
-  dispatch
+  dispatch,
+  onAfterSave
 }) {
   const [view, setView] = useState('list');
   const [sel, setSel] = useState(null);
@@ -3328,19 +3389,11 @@ function GrantsModule({
   const [conf, setConf] = useState(null);
   const filt = state.grants.filter(gr => (g(gr, 'client_name', 'clientName') || '').toLowerCase().includes(search.toLowerCase())).filter(gr => !fTy || g(gr, 'grant_type', 'grantType') === fTy).filter(gr => !fSt || gr.status === fSt);
   const save = gr => {
-    dispatch(gr.id ? {
-      type: 'UPD_GRANT',
-      p: gr
-    } : {
-      type: 'ADD_GRANT',
-      p: {
-        ...gr,
-        id: uid(),
-        created_at: new Date().toISOString()
-      }
-    });
+    const saved = gr.id ? gr : { ...gr, id: uid(), created_at: new Date().toISOString() };
+    dispatch(gr.id ? { type: 'UPD_GRANT', p: saved } : { type: 'ADD_GRANT', p: saved });
     setView('list');
     setSel(null);
+    if (onAfterSave) onAfterSave(saved);
   };
   if (view === 'form') return /*#__PURE__*/React.createElement(GrantForm, {
     grant: sel,
@@ -3521,9 +3574,14 @@ function GrantForm({
     dob: '',
     trn: '',
     phone: '',
+    parish: ST_THOMAS_PARISH,
+    community: '',
+    street: '',
+    lot_number: '',
+    lat: null,
+    lng: null,
     address: '',
     directions: '',
-    parish: 'St. Thomas',
     marital_status: '',
     occupation: '',
     physical_condition: '',
@@ -3564,6 +3622,12 @@ function GrantForm({
       dob: cl.dob || '',
       trn: cl.trn || '',
       phone: cl.phone || '',
+      parish: cl.parish || ST_THOMAS_PARISH,
+      community: cl.community || '',
+      street: cl.street || '',
+      lot_number: cl.lot_number || '',
+      lat: cl.lat || null,
+      lng: cl.lng || null,
       address: cl.address || '',
       directions: cl.directions || ''
     }));else set('client_id')(cid);
@@ -3668,13 +3732,11 @@ function GrantForm({
     type: "date",
     value: f.assigned_date,
     onChange: set('assigned_date')
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Parish"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: f.parish,
-    onChange: set('parish')
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Link to Client"
+  })), React.createElement(Field, { label: "Parish" },
+    React.createElement('div', { style: { padding: '9px 12px', border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 14, background: '#f5f5f5', color: C.textMuted } },
+      ST_THOMAS_PARISH, ' ', React.createElement('span', { style: { fontSize: 11 } }, '(fixed)')
+    )
+  ), React.createElement(Field, { label: "Link to Client"
   }, /*#__PURE__*/React.createElement(Sel, {
     value: f.client_id,
     onChange: prefill,
@@ -3710,20 +3772,13 @@ function GrantForm({
   }, /*#__PURE__*/React.createElement(Inp, {
     value: f.phone,
     onChange: set('phone')
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Address"
-  }, /*#__PURE__*/React.createElement(Txt, {
-    value: f.address,
-    onChange: set('address'),
-    rows: 2
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Directions"
-  }, /*#__PURE__*/React.createElement(Txt, {
-    value: f.directions,
-    onChange: set('directions'),
-    rows: 2
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Marital Status"
+  })), React.createElement(LocationPicker, {
+    value: { parish: f.parish, community: f.community, street: f.street, lot_number: f.lot_number, lat: f.lat, lng: f.lng },
+    onChange: v => setF(p => ({ ...p, ...v, address: [v.lot_number, v.street, v.community, ST_THOMAS_PARISH].filter(Boolean).join(', ') }))
+  }),
+  React.createElement(Field, { label: "Directions", hint: "Landmarks, turns, field notes" },
+    React.createElement(Txt, { value: f.directions, onChange: set('directions'), rows: 2 })
+  ), React.createElement(Field, { label: "Marital Status"
   }, /*#__PURE__*/React.createElement(Sel, {
     value: f.marital_status,
     onChange: set('marital_status'),
@@ -4150,7 +4205,8 @@ function GrantDetail({
 // ── DELIVERIES ────────────────────────────────────────────────────────────────
 function DeliveriesModule({
   state,
-  dispatch
+  dispatch,
+  onAfterSave
 }) {
   const [view, setView] = useState('list');
   const [sel, setSel] = useState(null);
@@ -4158,19 +4214,11 @@ function DeliveriesModule({
   const [fSt, setFSt] = useState('');
   const filt = state.deliveries.filter(d => !fSt || d.status === fSt);
   const save = d => {
-    dispatch(d.id ? {
-      type: 'UPD_DEL',
-      p: d
-    } : {
-      type: 'ADD_DEL',
-      p: {
-        ...d,
-        id: uid(),
-        created_at: new Date().toISOString()
-      }
-    });
+    const saved = d.id ? d : { ...d, id: uid(), created_at: new Date().toISOString() };
+    dispatch(d.id ? { type: 'UPD_DEL', p: saved } : { type: 'ADD_DEL', p: saved });
     setView('list');
     setSel(null);
+    if (onAfterSave) onAfterSave(saved);
   };
   if (view === 'form') return /*#__PURE__*/React.createElement(DeliveryForm, {
     delivery: sel,
@@ -4302,6 +4350,9 @@ function DeliveryForm({
 }) {
   const blank = {
     post_office: '',
+    post_office_community: '',
+    lat: null,
+    lng: null,
     delivery_date: today(),
     batch_ref: '',
     cheque_count: '',
@@ -4335,12 +4386,21 @@ function DeliveryForm({
   }, delivery ? 'Edit Delivery' : 'New Delivery Run')), /*#__PURE__*/React.createElement(Field, {
     label: "Post Office",
     required: true
-  }, postOffices.length > 0 ? /*#__PURE__*/React.createElement(Sel, {
+  }, postOffices.length > 0 ? React.createElement('select', {
     value: f.post_office,
-    onChange: set('post_office'),
-    options: postOffices.map(p => p.name),
-    placeholder: "— select post office —"
-  }) : /*#__PURE__*/React.createElement(Inp, {
+    onChange: e => {
+      const name = e.target.value;
+      const known = ST_THOMAS_POST_OFFICES.find(p => p.name === name);
+      const po = postOffices.find(p => p.name === name) || {};
+      const comm = (known && known.community) || po.community || '';
+      const coords = resolveLatLng(comm);
+      setF(p => ({ ...p, post_office: name, post_office_community: comm, lat: coords ? coords.lat : null, lng: coords ? coords.lng : null }));
+    },
+    style: { width: '100%', padding: '9px 12px', border: '1px solid ' + C.border, borderRadius: 8, fontSize: 14, background: C.surface }
+  },
+    React.createElement('option', { value: '' }, '-- select post office --'),
+    postOffices.map(p => React.createElement('option', { key: p.id || p.name, value: p.name }, p.name))
+  ) : React.createElement(Inp, {
     value: f.post_office,
     onChange: set('post_office'),
     placeholder: "Post office name"
@@ -4872,6 +4932,7 @@ function SettingsModule({
   const [prof, setProf] = useState(state.profile);
   const [saved, setSaved] = useState(false);
   const [newPO, setNewPO] = useState('');
+  const [newPOComm, setNewPOComm] = useState('');
   const [confReset, setConfReset] = useState(false);
   const set = k => v => setProf(p => ({
     ...p,
@@ -5062,25 +5123,30 @@ function SettingsModule({
       gap: 8,
       marginBottom: 12
     }
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: newPO,
-    onChange: setNewPO,
-    placeholder: "Post office name"
-  }), /*#__PURE__*/React.createElement(Btn, {
-    size: "sm",
-    onClick: () => {
-      if (newPO.trim()) {
-        dispatch({
-          type: 'ADD_PO',
-          p: {
-            id: uid(),
-            name: newPO.trim()
-          }
-        });
-        setNewPO('');
+  },
+    React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 6, flex: 1 } },
+      React.createElement(Inp, { value: newPO, onChange: setNewPO, placeholder: "Post office name" }),
+      React.createElement('select', {
+        value: newPOComm,
+        onChange: e => setNewPOComm(e.target.value),
+        style: { width: '100%', padding: '8px 12px', border: '1px solid ' + C.border, borderRadius: 8, fontSize: 13, background: C.surface }
+      },
+        React.createElement('option', { value: '' }, '-- community (optional) --'),
+        Object.keys(ST_THOMAS_COMMUNITIES).map(n => React.createElement('option', { key: n, value: n }, n))
+      )
+    ),
+    React.createElement(Btn, {
+      size: "sm",
+      onClick: () => {
+        if (newPO.trim()) {
+          const coords = resolveLatLng(newPOComm);
+          dispatch({ type: 'ADD_PO', p: { id: uid(), name: newPO.trim(), community: newPOComm, lat: coords ? coords.lat : null, lng: coords ? coords.lng : null } });
+          setNewPO('');
+          setNewPOComm('');
+        }
       }
-    }
-  }, "Add")), state.postOffices.length === 0 && /*#__PURE__*/React.createElement("p", {
+    }, "Add")
+  ), state.postOffices.length === 0 && /*#__PURE__*/React.createElement("p", {
     style: {
       fontSize: 13,
       color: C.textMuted
@@ -5094,15 +5160,15 @@ function SettingsModule({
       padding: '8px 0',
       borderBottom: `1px solid ${C.border}`
     }
-  }, /*#__PURE__*/React.createElement("span", {
-    style: {
-      fontSize: 14
-    }
-  }, po.name), /*#__PURE__*/React.createElement("button", {
-    onClick: () => dispatch({
-      type: 'DEL_PO',
-      p: po.id
-    }),
+  },
+    React.createElement('div', null,
+      React.createElement('span', { style: { fontSize: 14 } }, po.name),
+      po.community && React.createElement('span', { style: { fontSize: 11, color: C.textMuted, marginLeft: 6 } }, po.community,
+        po.lat ? React.createElement(Icon, { name: 'mapPin', size: 10, color: C.success, style: { marginLeft: 3 } }) : null
+      )
+    ),
+    React.createElement("button", {
+    onClick: () => dispatch({ type: 'DEL_PO', p: po.id }),
     style: {
       background: 'none',
       border: 'none',
@@ -5137,8 +5203,95 @@ function SettingsModule({
 }
 
 // ── MAP MODULE ────────────────────────────────────────────────────────────────
+
+// ── PIN CONFIRM MODAL ─────────────────────────────────────────────────────────
+// Shown after a record is saved. Navigates to the Map tab with a draggable pin.
+// onConfirm(lat, lng) → save the corrected coordinates back to the record.
+// onCancel → dismiss, keeping the auto-geocoded coords.
+function PinConfirmModal({ record, onConfirm, onCancel }) {
+  const mapRef = useRef(null);
+  const leafletMap = useRef(null);
+  const markerRef = useRef(null);
+  const [pos, setPos] = useState({ lat: record.lat, lng: record.lng });
+  const [changed, setChanged] = useState(false);
+
+  useEffect(() => {
+    if (!mapRef.current || leafletMap.current) return;
+    const lat = record.lat || 17.882;
+    const lng = record.lng || -76.409;
+    const m = L.map(mapRef.current, { zoomControl: true, attributionControl: false }).setView([lat, lng], 15);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(m);
+    leafletMap.current = m;
+
+    const icon = L.divIcon({
+      html: `<div style="width:28px;height:28px;background:#0D6E6E;border:3px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 6px rgba(0,0,0,.4)"></div>`,
+      className: '',
+      iconSize: [28, 28],
+      iconAnchor: [14, 28]
+    });
+    const mk = L.marker([lat, lng], { icon, draggable: true }).addTo(m);
+    mk.bindPopup('<b>' + (record.label || 'Record') + '</b><br>Drag to correct position').openPopup();
+    mk.on('dragend', e => {
+      const ll = e.target.getLatLng();
+      setPos({ lat: ll.lat, lng: ll.lng });
+      setChanged(true);
+    });
+    markerRef.current = mk;
+    return () => { m.remove(); leafletMap.current = null; };
+  }, []);
+
+  const addressLine = [record.lot_number, record.street, record.community].filter(Boolean).join(', ');
+
+  return React.createElement('div', {
+    style: { position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,.55)', display: 'flex', flexDirection: 'column' }
+  },
+    React.createElement('div', {
+      style: { background: C.surface, padding: '14px 16px', borderBottom: '1px solid ' + C.border }
+    },
+      React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' } },
+        React.createElement('div', null,
+          React.createElement('h3', { style: { fontSize: 16, color: C.primaryDark, marginBottom: 2 } }, 'Confirm Map Pin'),
+          React.createElement('p', { style: { fontSize: 12, color: C.textMuted } },
+            addressLine || 'Drag the pin to the exact location'
+          )
+        ),
+        React.createElement('button', {
+          onClick: onCancel,
+          style: { background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: C.textMuted, lineHeight: 1 }
+        }, '\u00d7')
+      ),
+      changed && React.createElement('div', {
+        style: { marginTop: 8, padding: '6px 10px', background: '#FFF8E1', borderRadius: 6, fontSize: 12, color: '#7B5E00' }
+      }, '\u26a0\ufe0f Pin moved — remember to save changes below')
+    ),
+    React.createElement('div', { ref: mapRef, style: { flex: 1 } }),
+    React.createElement('div', {
+      style: { background: C.surface, padding: '12px 16px', borderTop: '1px solid ' + C.border, display: 'flex', gap: 10 }
+    },
+      React.createElement(Btn, {
+        variant: 'ghost',
+        onClick: onCancel,
+        style: { flex: 1, justifyContent: 'center' }
+      }, 'Use Auto Pin'),
+      React.createElement(Btn, {
+        onClick: () => {
+          if (changed) {
+            // Show "are you sure" inline
+            if (!window.confirm('Save corrected pin location (' + pos.lat.toFixed(5) + ', ' + pos.lng.toFixed(5) + ')?')) return;
+          }
+          onConfirm(pos.lat, pos.lng);
+        },
+        style: { flex: 1, justifyContent: 'center', background: changed ? C.primary : C.success }
+      }, changed ? 'Save Corrected Pin' : 'Pin Looks Good \u2714')
+    )
+  );
+}
+
 function MapModule({
-  state
+  state,
+  pendingPin,
+  onPinConfirmed,
+  onPinDismissed
 }) {
   const mapRef = useRef(null);
   const leafletMap = useRef(null);
@@ -5167,51 +5320,47 @@ function MapModule({
   const allCases = React.useMemo(() => {
     const list = [];
     (state.pathCases || []).forEach(p => {
-      const addr = p.residential_address || p.community || '';
-      if (addr) list.push({
-        id: p.id,
-        type: 'path',
+      const addr = p.residential_address || [p.lot_number, p.street, p.community].filter(Boolean).join(', ') || p.community || '';
+      if (addr || p.lat) list.push({
+        id: p.id, type: 'path',
         label: g(p, 'client_name', 'clientName') || 'PATH Case',
-        address: addr,
-        community: p.community || '',
-        status: p.status,
-        sub: g(p, 'case_type', 'caseType') || 'PATH'
+        address: addr, community: p.community || '',
+        lat: p.lat || null, lng: p.lng || null,
+        lot_number: p.lot_number || '', street: p.street || '',
+        status: p.status, sub: g(p, 'case_type', 'caseType') || 'PATH'
       });
     });
     (state.grants || []).forEach(gr => {
-      const addr = gr.residential_address || gr.community || '';
-      if (addr) list.push({
-        id: gr.id,
-        type: 'grant',
+      const addr = gr.address || [gr.lot_number, gr.street, gr.community].filter(Boolean).join(', ') || gr.community || '';
+      if (addr || gr.lat) list.push({
+        id: gr.id, type: 'grant',
         label: g(gr, 'client_name', 'clientName') || 'Grant',
-        address: addr,
-        community: gr.community || '',
-        status: gr.status,
-        sub: g(gr, 'grant_type', 'grantType') || 'Grant'
+        address: addr, community: gr.community || '',
+        lat: gr.lat || null, lng: gr.lng || null,
+        lot_number: gr.lot_number || '', street: gr.street || '',
+        status: gr.status, sub: g(gr, 'grant_type', 'grantType') || 'Grant'
       });
     });
     (state.deliveries || []).forEach(d => {
       const addr = g(d, 'post_office', 'postOffice') || '';
-      if (addr) list.push({
-        id: d.id,
-        type: 'delivery',
-        label: g(d, 'client_name', 'clientName') || 'Delivery',
-        address: addr,
-        community: addr,
-        status: d.status,
-        sub: 'Delivery'
+      if (addr || d.lat) list.push({
+        id: d.id, type: 'delivery',
+        label: addr || 'Delivery',
+        address: addr, community: d.post_office_community || addr,
+        lat: d.lat || null, lng: d.lng || null,
+        lot_number: '', street: '',
+        status: d.status, sub: 'Delivery'
       });
     });
     (state.clients || []).forEach(cl => {
-      const addr = cl.address || cl.community || '';
-      if (addr) list.push({
-        id: cl.id,
-        type: 'client',
+      const addr = cl.address || [cl.lot_number, cl.street, cl.community].filter(Boolean).join(', ') || cl.community || '';
+      if (addr || cl.lat) list.push({
+        id: cl.id, type: 'client',
         label: cl.name || 'Client',
-        address: addr,
-        community: cl.community || '',
-        status: '',
-        sub: 'Client'
+        address: addr, community: cl.community || '',
+        lat: cl.lat || null, lng: cl.lng || null,
+        lot_number: cl.lot_number || '', street: cl.street || '',
+        status: '', sub: 'Client'
       });
     });
     return list;
@@ -5230,125 +5379,12 @@ function MapModule({
     client: 'Client'
   };
 
-  // ── JAMAICA COMMUNITY COORDINATES FALLBACK ──────────────────────────────────
-  const JM_COMMUNITIES = {
-    // Kingston & St. Andrew
-    'kingston': [17.9970, -76.7936], 'downtown kingston': [17.9970, -76.7936],
-    'new kingston': [17.9938, -76.7856], 'half way tree': [18.0101, -76.7927],
-    'cross roads': [17.9993, -76.7878], 'vineyard town': [17.9951, -76.7739],
-    'august town': [18.0126, -76.7561], 'papine': [18.0237, -76.7497],
-    'mona': [18.0173, -76.7488], 'liguanea': [18.0062, -76.7767],
-    'constant spring': [18.0420, -76.7917], 'stony hill': [18.0661, -76.7647],
-    'meadowbrook': [18.0220, -76.7858], 'barbican': [18.0282, -76.7697],
-    'manor park': [18.0387, -76.7807], 'norbrook': [18.0334, -76.7847],
-    'cherry gardens': [18.0255, -76.7778], 'havendale': [18.0290, -76.8043],
-    'portmore': [17.9533, -76.8750], 'waterford': [17.9656, -76.8669],
-    'gregory park': [17.9761, -76.8567], 'braeton': [17.9453, -76.8832],
-    'independence city': [17.9573, -76.8826], 'edgewater': [17.9606, -76.9025],
-    'caymanas': [17.9879, -76.8742], 'twickenham park': [17.9760, -76.8808],
-    'spanish town': [17.9909, -76.9562], 'old harbour': [17.9218, -77.1066],
-    'old harbour bay': [17.8967, -77.0953], 'linstead': [18.1421, -77.0267],
-    'bog walk': [18.0990, -77.0019], 'ewarton': [18.1722, -77.0684],
-    'kitson town': [18.0917, -76.9978], 'ensom city': [17.9868, -76.8956],
-    // St. Catherine
-    'greater portmore': [17.9533, -76.8750], 'passage fort': [17.9395, -76.9164],
-    'hellshire': [17.9053, -76.9453], 'central village': [18.0125, -76.9284],
-    'angels': [18.0650, -76.9500], 'sligoville': [18.0936, -77.0028],
-    // St. Thomas
-    'morant bay': [17.8820, -76.4090], 'yallahs': [17.8750, -76.5640],
-    'port morant': [17.8910, -76.3270], 'lyssons': [17.8706, -76.4850],
-    'seaforth': [17.9012, -76.4631], 'golden grove': [17.9042, -76.5093],
-    'rocky point': [17.8460, -77.0840], 'bull bay': [17.9300, -76.6680],
-    'cedar valley': [18.0001, -76.5167], 'bath': [18.0057, -76.3715],
-    // Portland
-    'port antonio': [18.1750, -76.4507], 'hope bay': [18.1620, -76.5560],
-    'buff bay': [18.1890, -76.6700], 'boston bay': [18.1476, -76.3903],
-    'moore town': [18.1064, -76.4394], 'long bay': [18.0892, -76.3424],
-    'annotto bay': [18.2667, -76.7667], 'windsor': [18.2340, -76.5500],
-    // St. Mary
-    'port maria': [18.3668, -76.8903], 'oracabessa': [18.4005, -76.9530],
-    'highgate': [18.2742, -76.9008], 'richmond': [18.2198, -76.8723],
-    'guys hill': [18.1751, -76.9369], 'fellowship': [18.3264, -76.9861],
-    // St. Ann
-    'st. ann\'s bay': [18.4350, -77.2000], "st ann's bay": [18.4350, -77.2000],
-    'ocho rios': [18.4060, -77.1030], 'brown\'s town': [18.3819, -77.3578],
-    'browns town': [18.3819, -77.3578], 'claremont': [18.3583, -77.2108],
-    'moneague': [18.2697, -77.1236], 'alexandria': [18.3506, -77.3928],
-    'discovery bay': [18.4725, -77.4069], 'runaway bay': [18.4594, -77.3358],
-    'priory': [18.4374, -77.1428], 'lydford': [18.3013, -77.1817],
-    // Trelawny
-    'falmouth': [18.4978, -77.6564], 'duncans': [18.4894, -77.5353],
-    'wakefield': [18.3778, -77.6542], 'rio bueno': [18.4828, -77.4572],
-    'ulster spring': [18.3333, -77.6167], 'clarks town': [18.4278, -77.5458],
-    // St. James
-    'montego bay': [18.4762, -77.8939], 'rose hall': [18.5153, -77.8175],
-    'ironshore': [18.4969, -77.8592], 'catherine hall': [18.4822, -77.9169],
-    'norwood': [18.4879, -77.9203], 'bogue': [18.4820, -77.9111],
-    'granville': [18.4980, -77.9464], 'cambridge': [18.3056, -77.9108],
-    'adelphi': [18.3528, -77.9689], 'hopewell': [18.5050, -78.0139],
-    // Hanover
-    'lucea': [18.4512, -78.1731], 'hopewell': [18.5050, -78.0139],
-    'green island': [18.4458, -78.2742], 'sandy bay': [18.4311, -78.1494],
-    'march town': [18.3919, -78.1436],
-    // Westmoreland
-    'savanna-la-mar': [18.2150, -78.1364], 'savanna la mar': [18.2150, -78.1364],
-    'negril': [18.2711, -78.3521], 'whitehouse': [18.0578, -78.0872],
-    'petersfield': [18.1875, -78.1247], 'frome': [18.2328, -78.1572],
-    'grange hill': [18.2497, -78.1575], 'brighton': [18.1289, -78.1583],
-    'little london': [18.2517, -78.2344],
-    // St. Elizabeth
-    'black river': [18.0250, -77.8500], 'santa cruz': [18.0500, -77.7167],
-    'mandeville': [18.0411, -77.5014], 'junction': [18.0206, -77.7186],
-    'balaclava': [18.2000, -77.7167], 'lacovia': [18.0792, -77.7814],
-    'myersville': [18.0658, -77.5903], 'accompong': [18.1167, -77.7333],
-    // Manchester
-    'christiana': [18.1833, -77.5167], 'porus': [18.0167, -77.4000],
-    'spaldings': [18.2167, -77.4667], 'kellits': [18.1667, -77.3000],
-    'frankfield': [18.2378, -77.3553], 'alligator pond': [17.8806, -77.5625],
-    // Clarendon
-    'may pen': [17.9680, -77.2430], 'chapelton': [18.0725, -77.2722],
-    'lionel town': [17.8411, -77.2072], 'hayes': [17.9008, -77.3011],
-    'four paths': [17.9528, -77.2964], 'milk river': [17.8703, -77.3044],
-    'denbigh': [17.9714, -77.2989], 'kellys': [18.1167, -77.2833],
-    'williams field': [17.9575, -77.2511],
-    // Post offices (common delivery points)
-    'half way tree post office': [18.0101, -76.7927],
-    'kingston post office': [17.9970, -76.7936],
-    'spanish town post office': [17.9909, -76.9562],
-    'may pen post office': [17.9680, -77.2430],
-    'montego bay post office': [18.4762, -77.8939],
-    'mandeville post office': [18.0411, -77.5014],
-    'port antonio post office': [18.1750, -76.4507],
-    'morant bay post office': [17.8820, -76.4090],
-    'black river post office': [18.0250, -77.8500],
-    'falmouth post office': [18.4978, -77.6564],
-    'lucea post office': [18.4512, -78.1731],
-    'savanna-la-mar post office': [18.2150, -78.1364],
-    'ocho rios post office': [18.4060, -77.1030],
-    'port maria post office': [18.3668, -76.8903],
-    'st. ann\'s bay post office': [18.4350, -77.2000],
-  };
-
-  const lookupCommunity = (address) => {
-    if (!address) return null;
-    const norm = address.toLowerCase().trim().replace(/[,\.]/g, '');
-    // Direct match
-    if (JM_COMMUNITIES[norm]) return { lat: JM_COMMUNITIES[norm][0], lng: JM_COMMUNITIES[norm][1], display: address };
-    // Partial match — find the longest key that is contained in the address
-    let best = null, bestLen = 0;
-    for (const [k, v] of Object.entries(JM_COMMUNITIES)) {
-      if (norm.includes(k) && k.length > bestLen) { best = v; bestLen = k.length; }
-    }
-    if (best) return { lat: best[0], lng: best[1], display: address };
-    return null;
-  };
-
-  // Geocode using LocationIQ (primary) → community table (fallback)
+  // Geocode an address using Nominatim (respects offline cache)
   const LOCATIONIQ_KEY = 'pk.e58e62d384f616e2b2f48c2f85ad8d32';
   const geocodeAddress = useCallback(async (address, parish) => {
     const key = (address + (parish || '')).toLowerCase().replace(/\s+/g, ' ').trim();
     if (geocodeCache[key]) return geocodeCache[key];
-    // 1. Community/post-office lookup table (instant, offline-safe)
+    // 1. Community lookup table (offline-safe)
     const communityHit = lookupCommunity(address);
     if (communityHit) {
       const newCache = { ...geocodeCache, [key]: communityHit };
@@ -5356,7 +5392,7 @@ function MapModule({
       localStorage.setItem('ssa_geocache', JSON.stringify(newCache));
       return communityHit;
     }
-    // 2. LocationIQ geocoding (online)
+    // 2. LocationIQ (online)
     const q = encodeURIComponent(`${address}, ${parish || 'Jamaica'}`);
     try {
       const r = await fetch(`https://us1.locationiq.com/v1/search?key=${LOCATIONIQ_KEY}&q=${q}&countrycodes=jm&limit=1&format=json`);
@@ -5406,52 +5442,40 @@ function MapModule({
     }).addTo(leafletMap.current);
   }, [mapLayer]);
 
-  // Render markers whenever filtered list or geocodeCache changes
+  // Render markers: stored lat/lng takes priority over geocodeCache
   useEffect(() => {
     if (!leafletMap.current || !markersLayer.current) return;
     markersLayer.current.clearLayers();
     const bounds = [];
     filtered.forEach(c => {
-      const key = (c.address + (state.profile?.parish || '')).toLowerCase().replace(/\s+/g, ' ').trim();
-      const coords = geocodeCache[key];
+      // 1. Stored coords on the record (most reliable)
+      let coords = (c.lat && c.lng) ? { lat: c.lat, lng: c.lng } : null;
+      // 2. Geocode cache fallback
+      if (!coords) {
+        const key = (c.address + (state.profile?.parish || '')).toLowerCase().replace(/\s+/g, ' ').trim();
+        coords = geocodeCache[key] || null;
+      }
       if (!coords) return;
       const color = typeColor[c.type] || C.primary;
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="36" viewBox="0 0 28 36"><path d="M14 0C6.27 0 0 6.27 0 14c0 10.5 14 22 14 22S28 24.5 28 14C28 6.27 21.73 0 14 0z" fill="${color}"/><circle cx="14" cy="14" r="6" fill="white"/></svg>`;
-      const icon = L.divIcon({
-        html: svg,
-        iconSize: [28, 36],
-        iconAnchor: [14, 36],
-        popupAnchor: [0, -36],
-        className: ''
-      });
-      const marker = L.marker([coords.lat, coords.lng], {
-        icon
-      });
+      const icon = L.divIcon({ html: svg, iconSize: [28, 36], iconAnchor: [14, 36], popupAnchor: [0, -36], className: '' });
+      const addrLine = [c.lot_number, c.street, c.community].filter(Boolean).join(', ') || c.address;
       const popup = `<div style="padding:12px;min-width:180px;font-family:'DM Sans',sans-serif">
         <div style="font-size:11px;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">${typeLabel[c.type]}</div>
         <div style="font-size:14px;font-weight:600;color:#1a1a1a;margin-bottom:2px">${c.label}</div>
-        <div style="font-size:12px;color:#6b7280;margin-bottom:8px">${c.address}</div>
+        <div style="font-size:12px;color:#6b7280;margin-bottom:8px">${addrLine}</div>
         ${c.status ? `<div style="display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;background:${color}22;color:${color};margin-bottom:8px">${c.status}</div>` : ''}
         <div style="display:flex;gap:8px">
           <button onclick="window._ssaNav('${c.id}')" style="flex:1;padding:6px;background:${color};color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">▶ Navigate</button>
         </div>
       </div>`;
-      marker.bindPopup(popup, {
-        className: 'case-popup',
-        maxWidth: 240
-      });
-      marker.on('click', () => setActiveCase({
-        ...c,
-        lat: coords.lat,
-        lng: coords.lng
-      }));
+      const marker = L.marker([coords.lat, coords.lng], { icon });
+      marker.bindPopup(popup, { className: 'case-popup', maxWidth: 240 });
+      marker.on('click', () => setActiveCase({ ...c, lat: coords.lat, lng: coords.lng }));
       markersLayer.current.addLayer(marker);
       bounds.push([coords.lat, coords.lng]);
     });
-    if (bounds.length > 0) leafletMap.current.fitBounds(bounds, {
-      padding: [40, 40],
-      maxZoom: 14
-    });
+    if (bounds.length > 0) leafletMap.current.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
   }, [filtered, geocodeCache]);
 
   // Global nav handler from popup button
@@ -5465,18 +5489,19 @@ function MapModule({
     };
   }, [allCases]);
 
-  // Geocode pending cases — community table runs instantly, LocationIQ only when online
+  // Geocode only records that have no stored lat/lng and aren't in cache
   useEffect(() => {
     if (filtered.length === 0) return;
     const missing = filtered.filter(c => {
+      if (c.lat && c.lng) return false; // already has stored coords — skip
       const key = (c.address + (state.profile?.parish || '')).toLowerCase().replace(/\s+/g, ' ').trim();
       return !geocodeCache[key];
     });
     if (missing.length === 0) return;
-    // First pass: resolve via community table (offline, instant)
-    const stillMissing = [];
+    // Community table pass (offline-safe, instant)
+    const stillNeedsOnline = [];
     for (const c of missing) {
-      const hit = lookupCommunity(c.address);
+      const hit = lookupCommunity(c.community || c.address);
       if (hit) {
         const key = (c.address + (state.profile?.parish || '')).toLowerCase().replace(/\s+/g, ' ').trim();
         setGeocodeCache(prev => {
@@ -5485,17 +5510,17 @@ function MapModule({
           return next;
         });
       } else {
-        stillMissing.push(c);
+        stillNeedsOnline.push(c);
       }
     }
-    // Second pass: LocationIQ for anything the table did not resolve (needs online)
-    if (!state.online || stillMissing.length === 0) return;
-    setPendingGeocode(stillMissing.map(m => m.id));
+    // LocationIQ pass for anything unresolved (needs network)
+    if (!state.online || stillNeedsOnline.length === 0) return;
+    setPendingGeocode(stillNeedsOnline.map(m => m.id));
     setGeocoding(true);
     (async () => {
-      for (const c of stillMissing) {
-        await geocodeAddress(c.address, state.profile?.parish || 'Jamaica');
-        await new Promise(r => setTimeout(r, 300)); // LocationIQ rate limit
+      for (const c of stillNeedsOnline) {
+        await geocodeAddress(c.community || c.address, ST_THOMAS_PARISH);
+        await new Promise(r => setTimeout(r, 300));
         setPendingGeocode(prev => prev.filter(id => id !== c.id));
       }
       setGeocoding(false);
@@ -5623,22 +5648,22 @@ function MapModule({
     }
   }, [gpsStatus, userPos, startGPS, drawRoute]);
 
-  // External navigate to Google Maps using current GPS position as origin
+  // External navigate to Google/Apple Maps
   const openExternalNav = c => {
-    const dest = c.lat ? encodeURIComponent(c.lat + ',' + c.lng) : encodeURIComponent(c.address + ', Jamaica');
-    let url;
-    if (userPos) {
-      url = 'https://www.google.com/maps/dir/' + userPos.lat + ',' + userPos.lng + '/' + dest;
-    } else {
-      url = 'https://www.google.com/maps/dir/?api=1&destination=' + dest + '&travelmode=driving';
-    }
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(c.address + ', Jamaica')}&travelmode=driving`;
     window.open(url, '_blank');
   };
   const geocodedCount = filtered.filter(c => {
     const key = (c.address + (state.profile?.parish || '')).toLowerCase().replace(/\s+/g, ' ').trim();
     return !!geocodeCache[key];
   }).length;
-  return /*#__PURE__*/React.createElement("div", {
+  return React.createElement(React.Fragment, null,
+    pendingPin && React.createElement(PinConfirmModal, {
+      record: { ...pendingPin.record, label: pendingPin.record.name || pendingPin.record.client_name || pendingPin.record.post_office || 'Record' },
+      onConfirm: onPinConfirmed,
+      onCancel: onPinDismissed
+    }),
+    /*#__PURE__*/React.createElement("div", {
     style: {
       display: 'flex',
       flexDirection: 'column',
@@ -5920,7 +5945,8 @@ function MapModule({
         });
       }
     }
-  }));
+  }))
+  );
 }
 function CaseListDrawer({
   cases,
@@ -6007,7 +6033,7 @@ function CaseListDrawer({
     }
   }, "No cases"), filtered.map(c => {
     const key = (c.address + (profile?.parish || '')).toLowerCase().replace(/\s+/g, ' ').trim();
-    const hasCoords = !!geocodeCache[key];
+    const hasCoords = !!(c.lat && c.lng) || !!geocodeCache[key];
     return /*#__PURE__*/React.createElement("div", {
       key: c.id,
       onClick: () => onSelect(c),
@@ -6187,6 +6213,7 @@ function InstallBanner() {
 function App() {
   const [state, dispatch] = useReducer(reducer, INIT);
   const [page, setPage] = useState('dashboard');
+  const [pendingPin, setPendingPin] = useState(null); // { record, type, id }
   const [authLoading, setAuthLoading] = useState(true);
   const [profileChecked, setProfileChecked] = useState(false);
   const {
@@ -6357,6 +6384,13 @@ function App() {
       type: 'RESET'
     });
   };
+  // Called by modules after save when record has lat/lng → opens pin confirm on map tab
+  const onAfterSave = (record, type, dispatchType) => {
+    if (record.lat && record.lng) {
+      setPendingPin({ record, type, dispatchType });
+      setPage('map');
+    }
+  };
   const pages = {
     dashboard: /*#__PURE__*/React.createElement(Dashboard, {
       state: state,
@@ -6365,22 +6399,34 @@ function App() {
     }),
     clients: /*#__PURE__*/React.createElement(ClientsModule, {
       state: state,
-      dispatch: sd
+      dispatch: sd,
+      onAfterSave: r => onAfterSave(r, 'client', r.id ? 'UPD_CLIENT' : 'ADD_CLIENT')
     }),
     path: /*#__PURE__*/React.createElement(PathModule, {
       state: state,
-      dispatch: sd
+      dispatch: sd,
+      onAfterSave: r => onAfterSave(r, 'path', r.id ? 'UPD_PATH' : 'ADD_PATH')
     }),
     grants: /*#__PURE__*/React.createElement(GrantsModule, {
       state: state,
-      dispatch: sd
+      dispatch: sd,
+      onAfterSave: r => onAfterSave(r, 'grant', r.id ? 'UPD_GRANT' : 'ADD_GRANT')
     }),
     deliveries: /*#__PURE__*/React.createElement(DeliveriesModule, {
       state: state,
-      dispatch: sd
+      dispatch: sd,
+      onAfterSave: r => onAfterSave(r, 'delivery', r.id ? 'UPD_DEL' : 'ADD_DEL')
     }),
     map: /*#__PURE__*/React.createElement(MapModule, {
-      state: state
+      state: state,
+      pendingPin: pendingPin,
+      onPinConfirmed: (lat, lng) => {
+        if (!pendingPin) return;
+        const r = { ...pendingPin.record, lat, lng };
+        sd({ type: pendingPin.dispatchType, p: r });
+        setPendingPin(null);
+      },
+      onPinDismissed: () => setPendingPin(null)
     }),
     calendar: /*#__PURE__*/React.createElement(CalendarModule, {
       state: state
