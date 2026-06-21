@@ -5221,6 +5221,86 @@ function SettingsModule({
 // Shown after a record is saved. Navigates to the Map tab with a draggable pin.
 // onConfirm(lat, lng) → save the corrected coordinates back to the record.
 // onCancel → dismiss, keeping the auto-geocoded coords.
+
+// -- EDIT MARKER MODAL ---------------------------------------------------------
+// Full-screen Leaflet map with draggable pin. Saves updated lat/lng via dispatch.
+// Always dispatches an UPDATE (never INSERT) so no duplication occurs.
+function EditMarkerModal({ caseItem, dispatch, onClose }) {
+  const mapRef = useRef(null);
+  const leafletMap = useRef(null);
+  const markerRef = useRef(null);
+  const [pos, setPos] = useState({ lat: caseItem.lat, lng: caseItem.lng });
+  const [moved, setMoved] = useState(false);
+
+  const typeDispatch = {
+    client: 'UPD_CLIENT', path: 'UPD_PATH', grant: 'UPD_GRANT', delivery: 'UPD_DEL'
+  };
+
+  useEffect(() => {
+    if (!mapRef.current || leafletMap.current) return;
+    const lat = caseItem.lat || 17.882;
+    const lng = caseItem.lng || -76.409;
+    const m = L.map(mapRef.current, { zoomControl: true, attributionControl: false }).setView([lat, lng], 16);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(m);
+    leafletMap.current = m;
+    const icon = L.divIcon({
+      html: '<div style="width:32px;height:32px;background:#0D6E6E;border:3px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 8px rgba(0,0,0,.45);cursor:grab"></div>',
+      className: '', iconSize: [32, 32], iconAnchor: [16, 32]
+    });
+    const mk = L.marker([lat, lng], { icon, draggable: true }).addTo(m);
+    mk.bindTooltip('Drag to reposition', { permanent: true, direction: 'top', offset: [0, -36] }).openTooltip();
+    mk.on('dragstart', () => mk.closeTooltip());
+    mk.on('dragend', e => {
+      const ll = e.target.getLatLng();
+      setPos({ lat: ll.lat, lng: ll.lng });
+      setMoved(true);
+    });
+    markerRef.current = mk;
+    return () => { m.remove(); leafletMap.current = null; };
+  }, []);
+
+  const save = () => {
+    if (!moved) { onClose(); return; }
+    const msg = 'Move pin to ' + pos.lat.toFixed(5) + ', ' + pos.lng.toFixed(5) + '?';
+    if (!window.confirm(msg)) return;
+    const actionType = typeDispatch[caseItem.type] || 'UPD_CLIENT';
+    dispatch({ type: actionType, p: { ...caseItem, lat: pos.lat, lng: pos.lng } });
+    onClose();
+  };
+
+  const addrLine = [caseItem.lot_number, caseItem.street, caseItem.community].filter(Boolean).join(', ') || caseItem.address || '';
+
+  return React.createElement('div', {
+    style: { position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', flexDirection: 'column', background: '#000' }
+  },
+    React.createElement('div', {
+      style: { background: C.surface, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexShrink: 0 }
+    },
+      React.createElement('div', null,
+        React.createElement('div', { style: { fontSize: 15, fontWeight: 700, color: C.primaryDark } }, 'Move Pin: ' + caseItem.label),
+        React.createElement('div', { style: { fontSize: 12, color: C.textMuted, marginTop: 2 } }, addrLine || 'Drag to the exact location')
+      ),
+      React.createElement('button', {
+        onClick: onClose,
+        style: { background: 'none', border: 'none', fontSize: 24, cursor: 'pointer', color: C.textMuted, lineHeight: 1, padding: 4 }
+      }, '\u00d7')
+    ),
+    moved && React.createElement('div', {
+      style: { background: '#FFF8E1', padding: '6px 16px', fontSize: 12, color: '#7B5E00', flexShrink: 0 }
+    }, '\u26a0 Pin moved to ' + pos.lat.toFixed(5) + ', ' + pos.lng.toFixed(5) + ' \u2014 tap Save to confirm'),
+    React.createElement('div', { ref: mapRef, style: { flex: 1 } }),
+    React.createElement('div', {
+      style: { background: C.surface, padding: '12px 16px', display: 'flex', gap: 10, flexShrink: 0 }
+    },
+      React.createElement(Btn, { variant: 'ghost', onClick: onClose, style: { flex: 1, justifyContent: 'center' } }, 'Cancel'),
+      React.createElement(Btn, {
+        onClick: save,
+        style: { flex: 1, justifyContent: 'center', background: moved ? C.primary : C.success }
+      }, moved ? 'Save New Position' : 'Pin Unchanged \u2714')
+    )
+  );
+}
+
 function PinConfirmModal({ record, onConfirm, onCancel }) {
   const mapRef = useRef(null);
   const leafletMap = useRef(null);
@@ -5302,6 +5382,7 @@ function PinConfirmModal({ record, onConfirm, onCancel }) {
 
 function MapModule({
   state,
+  dispatch,
   pendingPin,
   onPinConfirmed,
   onPinDismissed
@@ -5316,6 +5397,7 @@ function MapModule({
   const [gpsStatus, setGpsStatus] = useState('idle'); // idle|watching|error
   const [activeCase, setActiveCase] = useState(null); // {id, label, address, lat, lng, type}
   const [navigating, setNavigating] = useState(false);
+  const [editMarker, setEditMarker] = useState(null);
   const [geocoding, setGeocoding] = useState(false);
   const [filter, setFilter] = useState('all'); // all|path|grants|deliveries|clients
   const [mapLayer, setMapLayer] = useState('street'); // street|satellite
@@ -5661,9 +5743,13 @@ function MapModule({
     }
   }, [gpsStatus, userPos, startGPS, drawRoute]);
 
-  // External navigate to Google/Apple Maps
+  // External navigate -- use stored coords if available
   const openExternalNav = c => {
-    const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(c.address + ', Jamaica')}&travelmode=driving`;
+    const dest = (c.lat && c.lng) ? (c.lat + ',' + c.lng) : encodeURIComponent((c.address || c.label) + ', St. Thomas, Jamaica');
+    const origin = userPos ? (userPos.lat + ',' + userPos.lng) : '';
+    const url = origin
+      ? ('https://www.google.com/maps/dir/' + origin + '/' + dest)
+      : ('https://www.google.com/maps/dir/?api=1&destination=' + dest + '&travelmode=driving');
     window.open(url, '_blank');
   };
   const geocodedCount = filtered.filter(c => {
@@ -5681,7 +5767,7 @@ function MapModule({
       display: 'flex',
       flexDirection: 'column',
       height: 'calc(100vh - 56px - 62px)',
-      overflow: 'hidden',
+      overflow: 'visible',
       position: 'relative'
     }
   }, /*#__PURE__*/React.createElement("div", {
@@ -5824,141 +5910,80 @@ function MapModule({
     name: "wifiOff",
     size: 16,
     color: C.danger
-  }), "Go online to geocode addresses and pin cases on the map."), activeCase && /*#__PURE__*/React.createElement("div", {
-    style: {
-      position: 'absolute',
-      bottom: 0,
-      left: 0,
-      right: 0,
-      background: C.surface,
-      borderTop: `1px solid ${C.border}`,
-      borderRadius: '16px 16px 0 0',
-      padding: '16px',
-      zIndex: 70,
-      boxShadow: '0 -4px 20px #0002'
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'flex-start',
-      marginBottom: 8
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      flex: 1
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'inline-block',
-      padding: '2px 8px',
-      borderRadius: 20,
-      fontSize: 11,
-      fontWeight: 700,
-      background: (typeColor[activeCase.type] || C.primary) + '22',
-      color: typeColor[activeCase.type] || C.primary,
-      marginBottom: 4
-    }
-  }, typeLabel[activeCase.type] || activeCase.type), /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 16,
-      fontWeight: 700,
-      color: C.primaryDark
-    }
-  }, activeCase.label), /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 12,
-      color: C.textMuted,
-      marginTop: 2
-    }
-  }, activeCase.address), activeCase.status && /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 12,
-      color: C.textMuted,
-      marginTop: 2
-    }
-  }, "Status: ", activeCase.status)), /*#__PURE__*/React.createElement("button", {
-    onClick: () => {
-      setActiveCase(null);
-      setNavigating(false);
-      if (routeLayer.current) routeLayer.current.clearLayers();
+  }), "Go online to geocode addresses and pin cases on the map.")),
+  editMarker && React.createElement(EditMarkerModal, {
+    caseItem: editMarker, dispatch: dispatch, onClose: () => setEditMarker(null)
+  }),
+  activeCase && React.createElement('div', {
+    style: { position: 'fixed', bottom: 62, left: '50%', transform: 'translateX(-50%)',
+      width: '100%', maxWidth: 600, background: C.surface,
+      borderTop: '2px solid ' + (typeColor[activeCase.type] || C.primary),
+      borderRadius: '16px 16px 0 0', padding: '14px 16px 16px',
+      zIndex: 9000, boxShadow: '0 -6px 32px rgba(0,0,0,0.18)' }
+  },
+    React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 } },
+      React.createElement('div', { style: { flex: 1, minWidth: 0 } },
+        React.createElement('div', { style: { display: 'inline-block', padding: '2px 8px', borderRadius: 20,
+          fontSize: 11, fontWeight: 700, background: (typeColor[activeCase.type] || C.primary) + '22',
+          color: typeColor[activeCase.type] || C.primary, marginBottom: 4 } },
+          typeLabel[activeCase.type] || activeCase.type),
+        React.createElement('div', { style: { fontSize: 16, fontWeight: 700, color: C.primaryDark,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, activeCase.label),
+        React.createElement('div', { style: { fontSize: 12, color: C.textMuted, marginTop: 2,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } },
+          [activeCase.lot_number, activeCase.street, activeCase.community].filter(Boolean).join(', ') || activeCase.address),
+        activeCase.status && React.createElement('div', { style: { fontSize: 11, color: C.textMuted, marginTop: 2 } }, 'Status: ', activeCase.status)
+      ),
+      React.createElement('button', {
+        onClick: () => { setActiveCase(null); setNavigating(false); setEditMarker(null); if (routeLayer.current) routeLayer.current.clearLayers(); },
+        style: { background: 'none', border: 'none', cursor: 'pointer', color: C.textMuted,
+          padding: '4px 4px 4px 12px', fontSize: 22, lineHeight: 1, flexShrink: 0 }
+      }, '\u00d7')
+    ),
+    React.createElement('div', { style: { display: 'flex', gap: 8 } },
+      React.createElement(Btn, {
+        onClick: () => startNavigation(activeCase),
+        style: { flex: 1, justifyContent: 'center', opacity: activeCase.lat ? 1 : 0.5 },
+        variant: navigating ? 'secondary' : 'primary', disabled: !activeCase.lat
+      }, React.createElement(Icon, { name: 'navigation', size: 15, color: navigating ? C.primary : '#fff' }),
+        navigating ? 'Reroute' : 'Navigate'
+      ),
+      React.createElement(Btn, {
+        onClick: () => openExternalNav(activeCase), variant: 'ghost', style: { flex: 1, justifyContent: 'center' }
+      }, React.createElement(Icon, { name: 'mapPin', size: 15, color: C.primary }), 'Google Maps'),
+      React.createElement(Btn, {
+        onClick: () => setEditMarker(activeCase), variant: 'ghost', style: { flex: 1, justifyContent: 'center' }
+      }, React.createElement(Icon, { name: 'edit', size: 15, color: C.textMuted }), 'Move Pin')
+    ),
+    navigating && React.createElement('div', {
+      style: { marginTop: 10, padding: '8px 12px', background: C.primaryLight, borderRadius: 8,
+        fontSize: 12, color: C.primaryDark, display: 'flex', alignItems: 'center', gap: 6 }
     },
-    style: {
-      background: 'none',
-      border: 'none',
-      cursor: 'pointer',
-      color: C.textMuted,
-      padding: 4
-    }
-  }, /*#__PURE__*/React.createElement(Icon, {
-    name: "x",
-    size: 20
-  }))), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'flex',
-      gap: 8
-    }
-  }, activeCase.lat && /*#__PURE__*/React.createElement(Btn, {
-    onClick: () => startNavigation(activeCase),
-    style: {
-      flex: 1,
-      justifyContent: 'center'
-    },
-    variant: navigating ? 'secondary' : 'primary'
-  }, /*#__PURE__*/React.createElement(Icon, {
-    name: "navigation",
-    size: 15,
-    color: navigating ? C.primary : '#fff'
-  }), navigating ? 'Reroute' : 'Navigate'), /*#__PURE__*/React.createElement(Btn, {
-    onClick: () => openExternalNav(activeCase),
-    variant: "ghost",
-    style: {
-      flex: 1,
-      justifyContent: 'center'
-    }
-  }, /*#__PURE__*/React.createElement(Icon, {
-    name: "mapPin",
-    size: 15,
-    color: C.primary
-  }), "Maps App")), navigating && userPos && activeCase.lat && /*#__PURE__*/React.createElement("div", {
-    style: {
-      marginTop: 10,
-      padding: '8px 12px',
-      background: C.primaryLight,
-      borderRadius: 8,
-      fontSize: 12,
-      color: C.primaryDark,
-      display: 'flex',
-      alignItems: 'center',
-      gap: 6
-    }
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "nav-pulse"
-  }, "📍"), /*#__PURE__*/React.createElement("span", null, "GPS active · Accuracy ±", Math.round(userPos.accuracy || 0), "m"))), /*#__PURE__*/React.createElement(CaseListDrawer, {
+      React.createElement('span', { className: 'nav-pulse' }, '\u{1F4CD}'),
+      React.createElement('span', null,
+        gpsStatus === 'watching' && userPos
+          ? ('GPS active \u00b7 Accuracy \u00b1' + Math.round(userPos.accuracy || 0) + 'm')
+          : 'Requesting GPS\u2026 allow location access if prompted')
+    )
+  ),
+  /*#__PURE__*/React.createElement(CaseListDrawer, {
     cases: filtered,
     geocodeCache: geocodeCache,
     profile: state.profile,
     onSelect: c => {
-      const key = (c.address + (state.profile?.parish || '')).toLowerCase().replace(/\s+/g, ' ').trim();
-      const coords = geocodeCache[key];
-      if (coords && leafletMap.current) {
-        leafletMap.current.setView([coords.lat, coords.lng], 16, {
-          animate: true
-        });
-        setActiveCase({
-          ...c,
-          lat: coords.lat,
-          lng: coords.lng
-        });
-      } else {
-        setActiveCase({
-          ...c,
-          lat: null,
-          lng: null
-        });
+      // Use stored lat/lng first, fall back to geocodeCache
+      let lat = c.lat, lng = c.lng;
+      if (!lat || !lng) {
+        const key = (c.address + (state.profile?.parish || '')).toLowerCase().replace(/\s+/g, ' ').trim();
+        const coords = geocodeCache[key];
+        if (coords) { lat = coords.lat; lng = coords.lng; }
       }
+      if (lat && lng && leafletMap.current) {
+        leafletMap.current.setView([lat, lng], 16, { animate: true });
+      }
+      setActiveCase({ ...c, lat: lat || null, lng: lng || null });
     }
-  }))
+  })
   );
 }
 function CaseListDrawer({
@@ -6447,6 +6472,7 @@ function App() {
     }),
     map: /*#__PURE__*/React.createElement(MapModule, {
       state: state,
+      dispatch: sd,
       pendingPin: pendingPin,
       onPinConfirmed: (lat, lng) => {
         if (!pendingPin) return;
