@@ -1,5 +1,5 @@
-// SSA SW v10 -- 20260621T175728Z
-const CACHE = 'ssa-v10';
+// SSA SW v11 -- 20260621T182305Z
+const CACHE = 'ssa-v11';
 const BASE = '/tes';
 
 const PRECACHE = [
