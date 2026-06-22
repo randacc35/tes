@@ -6078,139 +6078,126 @@ function CaseListDrawer({
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const typeColor = {
-    path: C.primary,
-    grant: C.accent,
-    delivery: C.success,
-    client: C.info
-  };
-  const filtered = cases.filter(c => c.label.toLowerCase().includes(search.toLowerCase()) || c.address.toLowerCase().includes(search.toLowerCase()));
-  return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
-    onClick: () => setOpen(o => !o),
-    style: {
-      position: 'absolute',
-      top: 72,
-      right: 10,
-      zIndex: 65,
-      background: C.surface,
-      border: `1px solid ${C.border}`,
-      borderRadius: 10,
-      padding: '8px 10px',
-      boxShadow: '0 2px 8px #0002',
-      cursor: 'pointer',
-      display: 'flex',
-      alignItems: 'center',
-      gap: 5,
-      fontSize: 12,
-      fontWeight: 600,
-      color: C.primaryDark
-    }
-  }, /*#__PURE__*/React.createElement(Icon, {
-    name: "route",
-    size: 14,
-    color: C.primary
-  }), " ", open ? 'Hide' : 'Cases'), open && /*#__PURE__*/React.createElement("div", {
-    style: {
-      position: 'absolute',
-      top: 72,
-      right: 10,
-      zIndex: 64,
-      background: C.surface,
-      border: `1px solid ${C.border}`,
-      borderRadius: 12,
-      width: 220,
-      maxHeight: 340,
-      boxShadow: '0 4px 20px #0003',
-      display: 'flex',
-      flexDirection: 'column',
-      overflow: 'hidden'
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      padding: '10px 10px 6px'
-    }
-  }, /*#__PURE__*/React.createElement("input", {
-    value: search,
-    onChange: e => setSearch(e.target.value),
-    placeholder: "Search…",
-    style: {
-      width: '100%',
-      padding: '6px 10px',
-      border: `1px solid ${C.border}`,
-      borderRadius: 8,
-      fontSize: 13,
-      outline: 'none'
-    }
-  })), /*#__PURE__*/React.createElement("div", {
-    style: {
-      overflowY: 'auto',
-      flex: 1
-    }
-  }, filtered.length === 0 && /*#__PURE__*/React.createElement("p", {
-    style: {
-      fontSize: 12,
-      color: C.textMuted,
-      textAlign: 'center',
-      padding: 16
-    }
-  }, "No cases"), filtered.map(c => {
-    const key = (c.address + (profile?.parish || '')).toLowerCase().replace(/\s+/g, ' ').trim();
-    const hasCoords = !!(c.lat && c.lng) || !!geocodeCache[key];
-    return /*#__PURE__*/React.createElement("div", {
-      key: c.id,
-      onClick: () => onSelect(c),
+  const typeColor = { path: C.primary, grant: C.accent, delivery: C.success, client: C.info };
+  const typeLabel = { path: 'PATH', grant: 'Grant', delivery: 'Delivery', client: 'Client' };
+  const filtered = cases.filter(c =>
+    c.label.toLowerCase().includes(search.toLowerCase()) ||
+    (c.address || '').toLowerCase().includes(search.toLowerCase()) ||
+    (c.community || '').toLowerCase().includes(search.toLowerCase())
+  );
+
+  return React.createElement(React.Fragment, null,
+    // Toggle button
+    React.createElement('button', {
+      onClick: () => setOpen(o => !o),
       style: {
-        padding: '8px 10px',
-        borderBottom: `1px solid ${C.border}`,
-        cursor: 'pointer',
-        display: 'flex',
-        gap: 8,
-        alignItems: 'flex-start'
+        position: 'absolute', top: 72, right: 10, zIndex: 65,
+        background: open ? C.primary : C.surface,
+        border: '1px solid ' + (open ? C.primary : C.border),
+        borderRadius: 10, padding: '8px 12px',
+        boxShadow: '0 2px 8px #0002', cursor: 'pointer',
+        display: 'flex', alignItems: 'center', gap: 5,
+        fontSize: 12, fontWeight: 600,
+        color: open ? '#fff' : C.primaryDark
+      }
+    },
+      React.createElement(Icon, { name: 'route', size: 14, color: open ? '#fff' : C.primary }),
+      ' ', open ? 'Hide' : ('Cases (' + cases.length + ')')
+    ),
+
+    // Backdrop
+    open && React.createElement('div', {
+      onClick: () => setOpen(false),
+      style: { position: 'fixed', inset: 0, zIndex: 8000, background: 'rgba(0,0,0,0.35)' }
+    }),
+
+    // Bottom sheet — slides up from above the nav bar
+    React.createElement('div', {
+      style: {
+        position: 'fixed', left: 0, right: 0, bottom: 62, zIndex: 8001,
+        background: C.surface, borderRadius: '16px 16px 0 0',
+        boxShadow: '0 -4px 24px rgba(0,0,0,0.18)',
+        display: 'flex', flexDirection: 'column', maxHeight: '60vh',
+        transform: open ? 'translateY(0)' : 'translateY(110%)',
+        transition: 'transform 0.28s cubic-bezier(0.4,0,0.2,1)',
+        pointerEvents: open ? 'all' : 'none'
+      }
+    },
+      // Handle bar + header
+      React.createElement('div', {
+        style: { padding: '10px 16px 8px', borderBottom: '1px solid ' + C.border, flexShrink: 0 }
       },
-      onMouseEnter: e => e.currentTarget.style.background = C.primaryLight,
-      onMouseLeave: e => e.currentTarget.style.background = 'transparent'
-    }, /*#__PURE__*/React.createElement("div", {
-      style: {
-        width: 8,
-        height: 8,
-        borderRadius: '50%',
-        background: typeColor[c.type] || C.primary,
-        marginTop: 5,
-        flexShrink: 0
-      }
-    }), /*#__PURE__*/React.createElement("div", {
-      style: {
-        flex: 1,
-        minWidth: 0
-      }
-    }, /*#__PURE__*/React.createElement("div", {
-      style: {
-        fontSize: 12,
-        fontWeight: 600,
-        color: C.primaryDark,
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        whiteSpace: 'nowrap'
-      }
-    }, c.label), /*#__PURE__*/React.createElement("div", {
-      style: {
-        fontSize: 11,
-        color: C.textMuted,
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        whiteSpace: 'nowrap'
-      }
-    }, c.address)), hasCoords ? /*#__PURE__*/React.createElement(Icon, {
-      name: "mapPin",
-      size: 12,
-      color: C.success
-    }) : /*#__PURE__*/React.createElement(Icon, {
-      name: "mapPin",
-      size: 12,
-      color: C.border
-    }));
-  }))));
+        React.createElement('div', {
+          style: { width: 36, height: 4, borderRadius: 2, background: C.border, margin: '0 auto 10px' }
+        }),
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 } },
+          React.createElement('span', { style: { fontSize: 15, fontWeight: 700, color: C.primaryDark, flex: 1 } },
+            'Cases on Map (' + filtered.length + (search ? ' of ' + cases.length : '') + ')'
+          ),
+          React.createElement('button', {
+            onClick: () => setOpen(false),
+            style: { background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: C.textMuted, lineHeight: 1 }
+          }, '\u00d7')
+        ),
+        React.createElement('input', {
+          value: search,
+          onChange: e => setSearch(e.target.value),
+          placeholder: 'Search name or address\u2026',
+          style: {
+            width: '100%', padding: '8px 12px',
+            border: '1px solid ' + C.border, borderRadius: 8,
+            fontSize: 13, outline: 'none', background: C.background || '#F8F7F4'
+          }
+        })
+      ),
+
+      // Scrollable list
+      React.createElement('div', { style: { overflowY: 'auto', flex: 1 } },
+        filtered.length === 0 && React.createElement('p', {
+          style: { fontSize: 13, color: C.textMuted, textAlign: 'center', padding: 24 }
+        }, search ? 'No cases match "' + search + '"' : 'No cases on map yet'),
+
+        filtered.map(c => {
+          const cacheKey = (c.address + (profile?.parish || '')).toLowerCase().replace(/\s+/g, ' ').trim();
+          const hasCoords = !!(c.lat && c.lng) || !!geocodeCache[cacheKey];
+          const addrLine = [c.lot_number, c.street, c.community].filter(Boolean).join(', ') || c.address || '';
+          return React.createElement('div', {
+            key: c.id,
+            onClick: () => { onSelect(c); setOpen(false); },
+            style: {
+              padding: '12px 16px', borderBottom: '1px solid ' + C.border,
+              cursor: 'pointer', display: 'flex', gap: 12, alignItems: 'center'
+            },
+            onTouchStart: e => e.currentTarget.style.background = C.primaryLight,
+            onTouchEnd: e => e.currentTarget.style.background = 'transparent',
+            onMouseEnter: e => e.currentTarget.style.background = C.primaryLight,
+            onMouseLeave: e => e.currentTarget.style.background = 'transparent'
+          },
+            React.createElement('div', {
+              style: { width: 10, height: 10, borderRadius: '50%', background: typeColor[c.type] || C.primary, flexShrink: 0 }
+            }),
+            React.createElement('div', { style: { flex: 1, minWidth: 0 } },
+              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 } },
+                React.createElement('span', {
+                  style: { fontSize: 11, fontWeight: 700, color: typeColor[c.type] || C.primary, textTransform: 'uppercase', letterSpacing: '0.4px' }
+                }, typeLabel[c.type] || c.type),
+                c.status && React.createElement('span', { style: { fontSize: 10, color: C.textMuted } }, '\u00b7 ' + c.status)
+              ),
+              React.createElement('div', {
+                style: { fontSize: 13, fontWeight: 600, color: C.primaryDark, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
+              }, c.label),
+              addrLine && React.createElement('div', {
+                style: { fontSize: 11, color: C.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }
+              }, addrLine)
+            ),
+            React.createElement(Icon, { name: 'mapPin', size: 14, color: hasCoords ? C.success : C.border })
+          );
+        })
+      )
+    )
+  );
 }
+
 
 // ── MORE MENU ─────────────────────────────────────────────────────────────────
 function MoreMenu({
