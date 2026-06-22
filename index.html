@@ -132,13 +132,15 @@ const TABLE_COLUMNS = {
   ssa_path_cases: ['id','officer_id','client_id','client_name','case_type',
     'status','residential_address','mailing_address',
     'parish','community','street','lot_number','lat','lng',
-    'directions','members','employment','income','assets',
-    'verification_flags','visit_date','next_review','notes',
+    'directions','employment','income',
+    'visit_date','next_review','notes',
     'payee_name','payee_trn','bank_name','account_number','dob','trn','nis',
+    'assigned_date','family_no','physical_condition','interview_notes',
+    'investigation_findings','recommended_amount','specific_reason',
     'created_at','updated_at'],
   ssa_grants: ['id','officer_id','client_id','client_name','grant_type',
     'status','address','parish','community','street','lot_number','lat','lng',
-    'directions','marital_status','dependants','employment','income',
+    'directions','marital_status','employment','income',
     'purpose','amount','method','dob','trn','nis','phone','telephone',
     'household_members','assets','notes','created_at','updated_at'],
   ssa_deliveries: ['id','officer_id','post_office','post_office_community',
@@ -1358,9 +1360,9 @@ function useSync(state, dispatch) {
     pullAbort.current = new AbortController();
     const [clients, path, grants, deliveries, pos] = await Promise.all([
     sbSelect('ssa_clients', oid, 'id,name,dob,nis,trn,phone,address,parish,community,street,lot_number,lat,lng,directions,created_at,updated_at'),
-    sbSelect('ssa_path_cases', oid, 'id,client_id,client_name,case_type,status,residential_address,mailing_address,parish,community,street,lot_number,lat,lng,directions,members,employment,income,assets,verification_flags,visit_date,next_review,notes,payee_name,payee_trn,bank_name,account_number,dob,trn,nis,assigned_date,family_no,physical_condition,interview_notes,investigation_findings,recommended_amount,specific_reason,created_at,updated_at'),
-    sbSelect('ssa_grants', oid, 'id,client_id,client_name,grant_type,status,address,parish,community,street,lot_number,lat,lng,directions,marital_status,dependants,employment,income,purpose,amount,method,dob,trn,nis,phone,telephone,household_members,assets,notes,created_at,updated_at'),
-    sbSelect('ssa_deliveries', oid, 'id,post_office,post_office_community,lat,lng,delivery_date,batch_ref,cheque_count,cheque_amount,cheque_number,cheque_date,receipt_details,notes,status,created_at,updated_at'),
+    sbSelect('ssa_path_cases', oid, 'id,client_id,client_name,case_type,status,residential_address,mailing_address,parish,community,street,lot_number,lat,lng,directions,employment,income,visit_date,next_review,notes,payee_name,payee_trn,bank_name,account_number,dob,trn,nis,assigned_date,family_no,physical_condition,interview_notes,investigation_findings,recommended_amount,specific_reason,created_at,updated_at'),
+    sbSelect('ssa_grants', oid, 'id,client_id,client_name,grant_type,status,address,parish,community,street,lot_number,lat,lng,directions,marital_status,employment,income,purpose,amount,method,dob,trn,nis,phone,telephone,household_members,assets,notes,assigned_date,physical_condition,specific_reason,interview_notes,investigation_findings,recommended_amount,created_at,updated_at'),
+    sbSelect('ssa_deliveries', oid, 'id,post_office,post_office_community,lat,lng,delivery_date,batch_ref,cheque_count,receipt_details,notes,status,created_at,updated_at'),
     sbSelect('ssa_post_offices', oid, 'id,name,community,lat,lng,created_at,updated_at'),
   ]);
     dispatch({
