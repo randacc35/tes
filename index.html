@@ -61,6 +61,7 @@ input,textarea,select,button{font-family:'DM Sans',sans-serif}
 <!-- Leaflet only needed when Map tab is open; load with low priority -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
 <script>
+document.addEventListener('DOMContentLoaded', function() {
 const {
   useState,
   useReducer,
@@ -6659,6 +6660,7 @@ try {
 } catch (e) {
   showErr('RENDER ERROR: ' + e.message + '\n' + (e.stack || ''));
 }
+}); // end DOMContentLoaded
 </script>
 </body>
 </html>
