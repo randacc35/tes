@@ -10,17 +10,20 @@
 <meta name="apple-mobile-web-app-title" content="SSA Companion"/>
 <title>SSA Companion</title>
 <link rel="manifest" href="manifest.json"/>
+<!-- DNS prefetch for all external origins -->
+<link rel="dns-prefetch" href="https://fonts.googleapis.com"/>
+<link rel="dns-prefetch" href="https://fonts.gstatic.com"/>
+<link rel="dns-prefetch" href="https://unpkg.com"/>
+<link rel="dns-prefetch" href="https://cdn.jsdelivr.net"/>
+<link rel="dns-prefetch" href="https://xgdmelrhfoeiudhiarfj.supabase.co"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Sora:wght@600;700&display=swap" rel="stylesheet"/>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<style>
-.leaflet-container { font-family: 'DM Sans', sans-serif; }
-.case-popup .leaflet-popup-content-wrapper { border-radius: 10px; padding: 0; overflow: hidden; box-shadow: 0 4px 20px #0003; }
-.case-popup .leaflet-popup-content { margin: 0; }
-.nav-pulse { animation: navpulse 1.5s ease-in-out infinite; }
-@keyframes navpulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.6;transform:scale(0.9)} }
-</style>
+<!-- Only load font weights actually used: 600+700 -->
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@600&family=Sora:wght@600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'"/>
+<noscript><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@600&family=Sora:wght@600;700&display=swap" rel="stylesheet"/></noscript>
+<!-- Leaflet CSS: non-blocking load -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" media="print" onload="this.media='all'"/>
+<noscript><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/></noscript>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body,#root{height:100%;width:100%}
@@ -32,6 +35,11 @@ input,textarea,select,button{font-family:'DM Sans',sans-serif}
 #root{min-height:100vh}
 .online-dot{width:7px;height:7px;border-radius:50%;display:inline-block}
 .sync-bar{position:fixed;top:0;left:0;right:0;color:#fff;font-size:12px;font-weight:600;text-align:center;padding:5px 12px;z-index:9999;display:flex;align-items:center;justify-content:center;gap:6px}
+.leaflet-container{font-family:'DM Sans',sans-serif}
+.case-popup .leaflet-popup-content-wrapper{border-radius:10px;padding:0;overflow:hidden;box-shadow:0 4px 20px #0003}
+.case-popup .leaflet-popup-content{margin:0}
+.nav-pulse{animation:navpulse 1.5s ease-in-out infinite}
+@keyframes navpulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(0.9)}}
 </style>
 </head>
 <body>
@@ -43,10 +51,15 @@ input,textarea,select,button{font-family:'DM Sans',sans-serif}
     <p style="font-family:'DM Sans',sans-serif;color:#6b7280;font-size:14px">Loading SSA Companion…</p>
   </div>
 </div>
-<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- Preload critical scripts to start download as early as possible -->
+<link rel="preload" href="https://unpkg.com/react@18/umd/react.production.min.js" as="script" crossorigin/>
+<link rel="preload" href="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" as="script" crossorigin/>
+<!-- Scripts load in order but don't block HTML parsing -->
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin defer></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin defer></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js" defer></script>
+<!-- Leaflet only needed when Map tab is open; load with low priority -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
 <script>
 const {
   useState,
@@ -152,13 +165,11 @@ async function sbDelete(table, id) {
   } = await sb.from(table).delete().eq('id', id);
   if (error) throw error;
 }
-async function sbSelect(table, officerId) {
-  const {
-    data,
-    error
-  } = await sb.from(table).select('*').eq('officer_id', officerId).order('created_at', {
-    ascending: false
-  });
+async function sbSelect(table, officerId, cols) {
+  const { data, error } = await sb.from(table)
+    .select(cols || '*')
+    .eq('officer_id', officerId)
+    .order('created_at', { ascending: false });
   if (error) throw error;
   return data || [];
 }
@@ -702,11 +713,15 @@ function reducer(state, action) {
         deliveries: action.deliveries,
         postOffices: action.pos
       };
-      LS.set('ssa_clients', action.clients);
-      LS.set('ssa_path', action.path);
-      LS.set('ssa_grants', action.grants);
-      LS.set('ssa_deliveries', action.deliveries);
-      LS.set('ssa_postoffices', action.pos);
+      // Batch LS writes in idle time to avoid blocking the main thread
+      const _d = action;
+      (window.requestIdleCallback || (cb => setTimeout(cb, 50)))(() => {
+        LS.set('ssa_clients', _d.clients);
+        LS.set('ssa_path', _d.path);
+        LS.set('ssa_grants', _d.grants);
+        LS.set('ssa_deliveries', _d.deliveries);
+        LS.set('ssa_postoffices', _d.pos);
+      });
       break;
     case 'ADD_CLIENT':
       {
@@ -1322,9 +1337,18 @@ function useSync(state, dispatch) {
       p: q.length
     });
   }, [oid]);
+  const pullAbort = useRef(null);
   const pull = useCallback(async () => {
     if (!navigator.onLine || !oid) return;
-    const [clients, path, grants, deliveries, pos] = await Promise.all([sbSelect('ssa_clients', oid), sbSelect('ssa_path_cases', oid), sbSelect('ssa_grants', oid), sbSelect('ssa_deliveries', oid), sbSelect('ssa_post_offices', oid)]);
+    if (pullAbort.current) pullAbort.current.abort();
+    pullAbort.current = new AbortController();
+    const [clients, path, grants, deliveries, pos] = await Promise.all([
+    sbSelect('ssa_clients', oid, 'id,name,dob,nis,trn,phone,address,parish,community,street,lot_number,lat,lng,directions,created_at,updated_at'),
+    sbSelect('ssa_path_cases', oid, 'id,client_id,client_name,case_type,status,residential_address,mailing_address,parish,community,street,lot_number,lat,lng,directions,members,employment,income,assets,verification_flags,visit_date,next_review,notes,payee_name,payee_trn,bank_name,account_number,dob,trn,nis,assigned_date,family_no,physical_condition,interview_notes,investigation_findings,recommended_amount,specific_reason,created_at,updated_at'),
+    sbSelect('ssa_grants', oid, 'id,client_id,client_name,grant_type,status,address,parish,community,street,lot_number,lat,lng,directions,marital_status,dependants,employment,income,purpose,amount,method,dob,trn,nis,phone,telephone,household_members,assets,notes,created_at,updated_at'),
+    sbSelect('ssa_deliveries', oid, 'id,post_office,post_office_community,lat,lng,delivery_date,batch_ref,cheque_count,cheque_amount,cheque_number,cheque_date,receipt_details,notes,status,created_at,updated_at'),
+    sbSelect('ssa_post_offices', oid, 'id,name,community,lat,lng,created_at,updated_at'),
+  ]);
     dispatch({
       type: 'LOAD_ALL',
       clients,
@@ -1373,6 +1397,8 @@ function useSync(state, dispatch) {
       window.removeEventListener('offline', dn);
     };
   }, [syncNow]);
+  // Expose syncNow so the service worker BG_SYNC message can trigger it
+  useEffect(() => { window.__ssaSyncNow = syncNow; }, [syncNow]);
   useEffect(() => {
     if (oid) pull();
   }, [oid]);
@@ -5501,7 +5527,7 @@ function MapModule({
     });
     return list;
   }, [state.pathCases, state.grants, state.deliveries, state.clients]);
-  const filtered = filter === 'all' ? allCases : allCases.filter(c => c.type === filter || filter === 'path' && c.type === 'path');
+  const filtered = React.useMemo(() => filter === 'all' ? allCases : allCases.filter(c => c.type === filter), [allCases, filter]);
   const typeColor = {
     path: C.primary,
     grant: C.accent,
@@ -5793,10 +5819,11 @@ function MapModule({
       : ('https://www.google.com/maps/dir/?api=1&destination=' + dest + '&travelmode=driving');
     window.open(url, '_blank');
   };
-  const geocodedCount = filtered.filter(c => {
+  const geocodedCount = React.useMemo(() => filtered.filter(c => {
+    if (c.lat && c.lng) return true;
     const key = (c.address + (state.profile?.parish || '')).toLowerCase().replace(/\s+/g, ' ').trim();
     return !!geocodeCache[key];
-  }).length;
+  }).length, [filtered, geocodeCache]);
   return React.createElement(React.Fragment, null,
     pendingPin && React.createElement(PinConfirmModal, {
       record: { ...pendingPin.record, label: pendingPin.record.name || pendingPin.record.client_name || pendingPin.record.post_office || 'Record' },
@@ -6291,7 +6318,11 @@ function InstallBanner() {
 // ── ROOT ──────────────────────────────────────────────────────────────────────
 function App() {
   const [state, dispatch] = useReducer(reducer, INIT);
-  const [page, setPage] = useState('dashboard');
+  const _initPage = (() => {
+    const p = new URLSearchParams(location.search).get('shortcut');
+    return p === 'path' ? 'path' : p === 'map' ? 'map' : 'dashboard';
+  })();
+  const [page, setPage] = useState(_initPage);
   const [pendingPin, setPendingPin] = useState(null); // { record, type, id }
   const [authLoading, setAuthLoading] = useState(true);
   const [profileChecked, setProfileChecked] = useState(false);
@@ -6357,19 +6388,31 @@ function App() {
     }));
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js').then(reg => {
-        // Tell a waiting SW to take over immediately
+        // Activate waiting SW immediately
         if (reg.waiting) reg.waiting.postMessage('skipWaiting');
         reg.addEventListener('updatefound', () => {
           const nw = reg.installing;
           if (nw) nw.addEventListener('statechange', () => {
             if (nw.state === 'installed' && navigator.serviceWorker.controller) {
               nw.postMessage('skipWaiting');
-              // Reload once the new SW has claimed the page
               navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload(), { once: true });
             }
           });
         });
+        // Listen for BG_SYNC messages from the SW (fires when back online)
+        navigator.serviceWorker.addEventListener('message', e => {
+          if (e.data && e.data.type === 'BG_SYNC') {
+            // Trigger app-level sync if there are pending ops
+            window.__ssaSyncNow && window.__ssaSyncNow();
+          }
+        });
       }).catch(() => {});
+      // Register background sync when going online
+      window.addEventListener('online', () => {
+        navigator.serviceWorker.ready.then(reg => {
+          if (reg.sync) reg.sync.register('ssa-sync').catch(() => {});
+        });
+      });
     }
   }, []);
 
