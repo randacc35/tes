@@ -139,6 +139,7 @@ const TABLE_COLUMNS = {
     'investigation_findings','recommended_amount','specific_reason',
     'created_at','updated_at'],
   ssa_grants: ['id','officer_id','client_id','client_name','grant_type',
+    'compassionate_subtype',
     'status','address','parish','community','street','lot_number','lat','lng',
     'directions','marital_status','employment','income',
     'purpose','amount','method','dob','trn','nis','phone','telephone',
@@ -1361,7 +1362,7 @@ function useSync(state, dispatch) {
     const [clients, path, grants, deliveries, pos] = await Promise.all([
     sbSelect('ssa_clients', oid, 'id,name,dob,nis,trn,phone,address,parish,community,street,lot_number,lat,lng,directions,created_at,updated_at'),
     sbSelect('ssa_path_cases', oid, 'id,client_id,client_name,case_type,status,residential_address,mailing_address,parish,community,street,lot_number,lat,lng,directions,employment,income,visit_date,next_review,notes,payee_name,payee_trn,bank_name,account_number,dob,trn,nis,assigned_date,family_no,physical_condition,interview_notes,investigation_findings,recommended_amount,specific_reason,created_at,updated_at'),
-    sbSelect('ssa_grants', oid, 'id,client_id,client_name,grant_type,status,address,parish,community,street,lot_number,lat,lng,directions,marital_status,employment,income,purpose,amount,method,dob,trn,nis,phone,telephone,household_members,assets,notes,assigned_date,physical_condition,specific_reason,interview_notes,investigation_findings,recommended_amount,created_at,updated_at'),
+    sbSelect('ssa_grants', oid, 'id,client_id,client_name,grant_type,compassionate_subtype,status,address,parish,community,street,lot_number,lat,lng,directions,marital_status,employment,income,purpose,amount,method,dob,trn,nis,phone,telephone,household_members,assets,notes,assigned_date,physical_condition,specific_reason,interview_notes,investigation_findings,recommended_amount,created_at,updated_at'),
     sbSelect('ssa_deliveries', oid, 'id,post_office,post_office_community,lat,lng,delivery_date,batch_ref,cheque_count,receipt_details,notes,status,created_at,updated_at'),
     sbSelect('ssa_post_offices', oid, 'id,name,community,lat,lng,created_at,updated_at'),
   ]);
@@ -1871,16 +1872,23 @@ function ProfileSetup({
 
 // ── CONSTANTS ─────────────────────────────────────────────────────────────────
 const VF = ['Name', 'Address', 'Household Members', 'Employment', 'Income', 'Housing Conditions'];
-const GRANT_TYPES = ['Compassionate', 'Medical', 'Funeral', 'House Repair', 'Rehabilitation', 'Business', 'Emergency', 'Education & Social Intervention'];
+// Grant types: Compassionate is the umbrella for Medical, Funeral, House Repair.
+// Rehabilitation covers individuals only (no Business sub-type).
+const GRANT_TYPES = [
+  'Compassionate Grant',
+  'Rehabilitation Grant',
+  'Emergency Grant',
+  'Education & Social Intervention Grant'
+];
+
+// Sub-types that appear under Compassionate Grant
+const COMPASSIONATE_SUBTYPES = ['Medical', 'Funeral', 'House Repair'];
+
 const GRANT_METHOD = {
-  'Compassionate': 'Office interview + home visit',
-  'Medical': 'Office interview + possible home visit',
-  'Funeral': 'Office interview only',
-  'House Repair': 'Home visit only',
-  'Rehabilitation': 'Office interview + home visit',
-  'Business': 'Office interview + home visit',
-  'Emergency': 'Office processing — urgent',
-  'Education & Social Intervention': 'Office interview only'
+  'Compassionate Grant': 'Office interview + home visit required',
+  'Rehabilitation Grant': 'Office interview + home visit required',
+  'Emergency Grant': 'Office processing — urgent, same-day where possible',
+  'Education & Social Intervention Grant': 'Office interview only'
 };
 const ASSETS = ['Laptop/Computer', 'Desktop Computer', 'Tablet', 'Car/Motor Vehicle', 'Motorbike', 'TV', 'Refrigerator', 'Freezer', 'Washing Machine', 'Microwave', 'Stove', 'Air Conditioner', 'DVD Player', 'Stereo System', 'Cable TV', 'Internet Connection', 'Land Phone', 'Cell Phone', 'Generator', 'Farm Animal'];
 
@@ -2582,7 +2590,7 @@ function ClientDetail({
     style: {
       fontSize: 14
     }
-  }, gr.grant_type || gr.grantType || '—'), /*#__PURE__*/React.createElement(StatusBadge, {
+  }, (gr.grant_type || gr.grantType || '—') + (gr.compassionate_subtype ? ' — ' + gr.compassionate_subtype : '')), /*#__PURE__*/React.createElement(StatusBadge, {
     status: gr.status
   })))));
 }
@@ -3644,7 +3652,8 @@ function GrantsModule({
       alignItems: 'center'
     }
   }, /*#__PURE__*/React.createElement(Badge, {
-    label: g(gr, 'grant_type', 'grantType') || '—',
+    label: (g(gr, 'grant_type', 'grantType') || '—')
+      + (gr.compassionate_subtype ? ' — ' + gr.compassionate_subtype : '') ,
     color: C.accent
   }), /*#__PURE__*/React.createElement("span", {
     style: {
@@ -3662,6 +3671,7 @@ function GrantForm({
 }) {
   const blank = {
     grant_type: '',
+    compassionate_subtype: '',
     status: 'Assigned',
     assigned_date: today(),
     client_id: '',
@@ -3750,6 +3760,7 @@ function GrantForm({
     family_info: p.family_info.filter(m => m.id !== id)
   }));
   const method = GRANT_METHOD[f.grant_type] || '';
+  const subLabel = f.grant_type === 'Compassionate Grant' && f.compassionate_subtype ? ' — ' + f.compassionate_subtype : '';
   const TABS = ['Application', 'Investigation', 'Recommendation', 'Disbursement'];
   return /*#__PURE__*/React.createElement("div", {
     style: {
@@ -3791,32 +3802,31 @@ function GrantForm({
       color: i === tab ? C.primary : C.textMuted,
       cursor: 'pointer'
     }
-  }, t))), tab === 0 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Field, {
-    label: "Grant Type",
-    required: true
-  }, /*#__PURE__*/React.createElement(Sel, {
-    value: f.grant_type,
-    onChange: set('grant_type'),
-    options: GRANT_TYPES,
-    placeholder: "— select grant type —"
-  })), method && /*#__PURE__*/React.createElement("div", {
-    style: {
-      background: C.primaryLight,
-      border: `1px solid ${C.primary}44`,
-      borderRadius: 8,
-      padding: '8px 12px',
-      marginBottom: 14,
-      fontSize: 13,
-      color: C.primaryDark,
-      display: 'flex',
-      alignItems: 'flex-start',
-      gap: 6
-    }
-  }, /*#__PURE__*/React.createElement(Icon, {
-    name: "info",
-    size: 14,
-    color: C.primary
-  }), method), /*#__PURE__*/React.createElement(Field, {
+  }, t))), tab === 0 && /*#__PURE__*/React.createElement(React.Fragment, null, React.createElement(Field, { label: "Grant Type", required: true },
+    React.createElement(Sel, {
+      value: f.grant_type,
+      onChange: v => setF(p => ({ ...p, grant_type: v, compassionate_subtype: '' })),
+      options: GRANT_TYPES,
+      placeholder: "— select grant type —"
+    })
+  ),
+  f.grant_type === 'Compassionate Grant' && React.createElement(Field, {
+    label: "Compassionate Sub-Type",
+    required: true,
+    hint: "Medical, Funeral and House Repair all fall under Compassionate Grant"
+  },
+    React.createElement(Sel, {
+      value: f.compassionate_subtype || '',
+      onChange: set('compassionate_subtype'),
+      options: COMPASSIONATE_SUBTYPES,
+      placeholder: "— select sub-type —"
+    })
+  ),
+  method && React.createElement("div", {
+    style: { background: C.primaryLight, border: `1px solid ${C.primary}44`,
+      borderRadius: 8, padding: '8px 12px', marginBottom: 14,
+      fontSize: 13, color: C.primaryDark, display: 'flex', alignItems: 'flex-start', gap: 6 }
+  }, React.createElement(Icon, { name: "info", size: 14, color: C.primary }), method), /*#__PURE__*/React.createElement(Field, {
     label: "Status"
   }, /*#__PURE__*/React.createElement(Sel, {
     value: f.status,
@@ -3998,29 +4008,26 @@ function GrantForm({
     onChange: set('investigation_findings'),
     rows: 5,
     placeholder: "What you personally observed"
-  })), f.grant_type === 'House Repair' && /*#__PURE__*/React.createElement(Field, {
+  })),
+  f.compassionate_subtype === 'House Repair' && React.createElement(Field, {
     label: "Damage Description"
-  }, /*#__PURE__*/React.createElement(Txt, {
+  }, React.createElement(Txt, {
     value: f.damage_description,
     onChange: set('damage_description'),
     rows: 4
-  })), f.grant_type === 'Medical' && /*#__PURE__*/React.createElement(Field, {
+  })),
+  f.compassionate_subtype === 'Medical' && React.createElement(Field, {
     label: "Medical Condition Observed"
-  }, /*#__PURE__*/React.createElement(Txt, {
+  }, React.createElement(Txt, {
     value: f.condition_description,
     onChange: set('condition_description'),
     rows: 4
-  })), f.grant_type === 'Rehabilitation' && /*#__PURE__*/React.createElement(Field, {
+  })),
+  f.grant_type === 'Rehabilitation Grant' && React.createElement(Field, {
     label: "Living Situation, Capacity & Needs"
-  }, /*#__PURE__*/React.createElement(Txt, {
+  }, React.createElement(Txt, {
     value: f.situation_description,
     onChange: set('situation_description'),
-    rows: 4
-  })), f.grant_type === 'Business' && /*#__PURE__*/React.createElement(Field, {
-    label: "Business Viability Assessment"
-  }, /*#__PURE__*/React.createElement(Txt, {
-    value: f.business_description,
-    onChange: set('business_description'),
     rows: 4
   })), /*#__PURE__*/React.createElement(Field, {
     label: "Photos"
@@ -4103,7 +4110,7 @@ function GrantForm({
     }
   }, "Cancel"), /*#__PURE__*/React.createElement(Btn, {
     onClick: () => onSave(f),
-    disabled: !f.client_name || !f.grant_type,
+    disabled: !f.client_name || !f.grant_type || (f.grant_type === 'Compassionate Grant' && !f.compassionate_subtype),
     style: {
       flex: 1,
       justifyContent: 'center'
@@ -4132,6 +4139,7 @@ function GrantDetail({
   const flow = ['Assigned', 'Interviewed', 'Investigated', 'Report Written', 'Submitted'];
   const next = flow[flow.indexOf(gr.status) + 1];
   const gt = g(gr, 'grant_type', 'grantType');
+  const gtDisplay = gt + (gr.compassionate_subtype ? ' — ' + gr.compassionate_subtype : '');
   return /*#__PURE__*/React.createElement("div", {
     style: {
       padding: '16px 16px 100px'
@@ -4192,7 +4200,7 @@ function GrantDetail({
   }, gr.alias && `"${gr.alias}"`)), /*#__PURE__*/React.createElement(StatusBadge, {
     status: gr.status
   })), /*#__PURE__*/React.createElement(Badge, {
-    label: gt || '—',
+    label: gtDisplay || '—',
     color: C.accent
   }), GRANT_METHOD[gt] && /*#__PURE__*/React.createElement("p", {
     style: {
