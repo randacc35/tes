@@ -1617,6 +1617,434 @@ function VisitLog({ caseId, caseType, officerName, dispatch }) {
 }
 
 
+// ── SYNC BAR ──────────────────────────────────────────────────────────────────
+const SyncBar = ({
+  online,
+  syncPending,
+  syncing,
+  onSync
+}) => {
+  if (online && syncPending === 0 && !syncing) return null;
+  return /*#__PURE__*/React.createElement("div", {
+    className: "sync-bar",
+    style: {
+      background: online ? C.warning : C.danger
+    }
+  }, syncing ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Icon, {
+    name: "refreshCw",
+    size: 14,
+    color: "#fff"
+  }), " Syncing…") : !online ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Icon, {
+    name: "wifiOff",
+    size: 14,
+    color: "#fff"
+  }), " Offline — changes saved locally") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Icon, {
+    name: "cloudOff",
+    size: 14,
+    color: "#fff"
+  }), " ", syncPending, " pending — ", /*#__PURE__*/React.createElement("button", {
+    onClick: onSync,
+    style: {
+      background: 'none',
+      border: 'none',
+      color: '#fff',
+      fontWeight: 700,
+      textDecoration: 'underline',
+      fontSize: 12,
+      cursor: 'pointer'
+    }
+  }, "sync now")));
+};
+
+// ── BOTTOM NAV ────────────────────────────────────────────────────────────────
+const BottomNav = ({
+  active,
+  onChange
+}) => {
+  const tabs = [{
+    id: 'dashboard',
+    label: 'Home',
+    icon: 'home'
+  }, {
+    id: 'path',
+    label: 'PATH',
+    icon: 'clipboard'
+  }, {
+    id: 'grants',
+    label: 'Grants',
+    icon: 'gift'
+  }, {
+    id: 'map',
+    label: 'Map',
+    icon: 'mapPin'
+  }, {
+    id: 'clients',
+    label: 'Clients',
+    icon: 'users'
+  }, {
+    id: 'more',
+    label: 'More',
+    icon: 'settings'
+  }];
+  return /*#__PURE__*/React.createElement("nav", {
+    style: {
+      position: 'fixed',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      background: C.surface,
+      borderTop: `1px solid ${C.border}`,
+      display: 'flex',
+      justifyContent: 'space-around',
+      zIndex: 100,
+      paddingBottom: 'env(safe-area-inset-bottom,8px)'
+    }
+  }, tabs.map(n => {
+    const isActive = n.id === 'more' ? ['calendar', 'reports', 'settings', 'more', 'deliveries'].includes(active) : active === n.id;
+    return /*#__PURE__*/React.createElement("button", {
+      key: n.id,
+      onClick: () => onChange(n.id),
+      style: {
+        flex: 1,
+        border: 'none',
+        background: 'none',
+        padding: '10px 0 6px',
+        cursor: 'pointer',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 3
+      }
+    }, /*#__PURE__*/React.createElement(Icon, {
+      name: n.icon,
+      size: 22,
+      color: isActive ? C.primary : C.textMuted
+    }), /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 10,
+        fontWeight: isActive ? 700 : 400,
+        color: isActive ? C.primary : C.textMuted
+      }
+    }, n.label), isActive && /*#__PURE__*/React.createElement("div", {
+      style: {
+        width: 4,
+        height: 4,
+        borderRadius: '50%',
+        background: C.primary
+      }
+    }));
+  }));
+};
+
+// ── AUTH SCREEN ───────────────────────────────────────────────────────────────
+function AuthScreen({
+  onAuth
+}) {
+  const [mode, setMode] = useState('login');
+  const [email, setEmail] = useState('');
+  const [pass, setPass] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+  const [msg, setMsg] = useState('');
+  const handle = async () => {
+    setLoading(true);
+    setErr('');
+    setMsg('');
+    try {
+      if (mode === 'login') {
+        const {
+          data,
+          error
+        } = await sb.auth.signInWithPassword({
+          email,
+          password: pass
+        });
+        if (error) throw error;
+        onAuth(data.user);
+      } else {
+        const {
+          data,
+          error
+        } = await sb.auth.signUp({
+          email,
+          password: pass
+        });
+        if (error) throw error;
+        if (data.user && !data.user.email_confirmed_at) setMsg('Check your email to confirm your account, then sign in.');else onAuth(data.user);
+      }
+    } catch (e) {
+      setErr(e.message || 'An error occurred');
+    }
+    setLoading(false);
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      minHeight: '100vh',
+      background: C.bg,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 20
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: C.surface,
+      borderRadius: 16,
+      padding: 32,
+      width: '100%',
+      maxWidth: 400,
+      boxShadow: '0 4px 32px #0002'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      textAlign: 'center',
+      marginBottom: 28
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 56,
+      height: 56,
+      background: C.primaryLight,
+      borderRadius: 16,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      margin: '0 auto 12px'
+    }
+  }, /*#__PURE__*/React.createElement(Icon, {
+    name: "clipboard",
+    size: 28,
+    color: C.primary
+  })), /*#__PURE__*/React.createElement("h1", {
+    style: {
+      fontSize: 22,
+      color: C.primaryDark,
+      marginBottom: 4
+    }
+  }, "SSA Companion"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 13,
+      color: C.textMuted
+    }
+  }, "MLSS Jamaica · Social Services Assistant")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      marginBottom: 20,
+      background: C.bg,
+      borderRadius: 8,
+      padding: 4
+    }
+  }, ['login', 'signup'].map(m => /*#__PURE__*/React.createElement("button", {
+    key: m,
+    onClick: () => setMode(m),
+    style: {
+      flex: 1,
+      padding: '8px',
+      border: 'none',
+      borderRadius: 6,
+      background: mode === m ? C.surface : 'transparent',
+      fontWeight: mode === m ? 700 : 400,
+      color: mode === m ? C.primary : C.textMuted,
+      cursor: 'pointer',
+      fontSize: 13
+    }
+  }, m === 'login' ? 'Sign In' : 'Create Account'))), err && /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: '#FEF2F2',
+      border: `1px solid ${C.danger}44`,
+      borderRadius: 8,
+      padding: '10px 12px',
+      marginBottom: 14,
+      fontSize: 13,
+      color: C.danger
+    }
+  }, err), msg && /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: '#F0FDF4',
+      border: `1px solid ${C.success}44`,
+      borderRadius: 8,
+      padding: '10px 12px',
+      marginBottom: 14,
+      fontSize: 13,
+      color: C.success
+    }
+  }, msg), /*#__PURE__*/React.createElement(Field, {
+    label: "Email",
+    required: true
+  }, /*#__PURE__*/React.createElement(Inp, {
+    value: email,
+    onChange: setEmail,
+    type: "email",
+    placeholder: "you@mlss.gov.jm",
+    autoComplete: "email"
+  })), /*#__PURE__*/React.createElement(Field, {
+    label: "Password",
+    required: true
+  }, /*#__PURE__*/React.createElement(Inp, {
+    value: pass,
+    onChange: setPass,
+    type: "password",
+    placeholder: "Password",
+    autoComplete: mode === 'login' ? 'current-password' : 'new-password'
+  })), /*#__PURE__*/React.createElement(Btn, {
+    onClick: handle,
+    disabled: loading || !email || !pass,
+    size: "lg",
+    style: {
+      width: '100%',
+      justifyContent: 'center',
+      marginTop: 8
+    }
+  }, loading ? 'Please wait…' : mode === 'login' ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Icon, {
+    name: "logIn",
+    size: 16
+  }), " Sign In") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Icon, {
+    name: "user",
+    size: 16
+  }), " Create Account")), /*#__PURE__*/React.createElement("p", {
+    style: {
+      textAlign: 'center',
+      marginTop: 14,
+      fontSize: 12,
+      color: C.textMuted
+    }
+  }, "Works offline · Data syncs automatically when online")));
+}
+
+// ── PROFILE SETUP ─────────────────────────────────────────────────────────────
+function ProfileSetup({
+  authUser,
+  onSave
+}) {
+  const [f, setF] = useState({
+    name: '',
+    employeeId: '',
+    email: authUser?.email || '',
+    phone: '',
+    zone: '03302',
+    zoneName: 'St. Thomas East',
+    parish: 'St. Thomas'
+  });
+  const set = k => v => setF(p => ({
+    ...p,
+    [k]: v
+  }));
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      minHeight: '100vh',
+      background: C.bg,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 20
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: C.surface,
+      borderRadius: 16,
+      padding: 32,
+      width: '100%',
+      maxWidth: 440,
+      boxShadow: '0 4px 32px #0002'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      textAlign: 'center',
+      marginBottom: 24
+    }
+  }, /*#__PURE__*/React.createElement(Icon, {
+    name: "user",
+    size: 32,
+    color: C.primary
+  }), /*#__PURE__*/React.createElement("h2", {
+    style: {
+      fontSize: 18,
+      color: C.primaryDark,
+      marginTop: 8
+    }
+  }, "Officer Profile"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 13,
+      color: C.textMuted
+    }
+  }, "Set up once to get started")), /*#__PURE__*/React.createElement(Field, {
+    label: "Full Name",
+    required: true
+  }, /*#__PURE__*/React.createElement(Inp, {
+    value: f.name,
+    onChange: set('name'),
+    placeholder: "Your full name"
+  })), /*#__PURE__*/React.createElement(Field, {
+    label: "Employee ID",
+    required: true
+  }, /*#__PURE__*/React.createElement(Inp, {
+    value: f.employeeId,
+    onChange: set('employeeId'),
+    placeholder: "e.g. MLSS-0042"
+  })), /*#__PURE__*/React.createElement(Field, {
+    label: "Email"
+  }, /*#__PURE__*/React.createElement(Inp, {
+    value: f.email,
+    onChange: set('email'),
+    type: "email"
+  })), /*#__PURE__*/React.createElement(Field, {
+    label: "Phone"
+  }, /*#__PURE__*/React.createElement(Inp, {
+    value: f.phone,
+    onChange: set('phone'),
+    placeholder: "+1 (876) 000-0000"
+  })), /*#__PURE__*/React.createElement(Field, {
+    label: "Zone Code"
+  }, /*#__PURE__*/React.createElement(Inp, {
+    value: f.zone,
+    onChange: set('zone'),
+    placeholder: "03302"
+  })), /*#__PURE__*/React.createElement(Field, {
+    label: "Zone Name"
+  }, /*#__PURE__*/React.createElement(Inp, {
+    value: f.zoneName,
+    onChange: set('zoneName'),
+    placeholder: "St. Thomas East"
+  })), /*#__PURE__*/React.createElement(Field, {
+    label: "Parish"
+  }, /*#__PURE__*/React.createElement(Inp, {
+    value: f.parish,
+    onChange: set('parish'),
+    placeholder: "St. Thomas"
+  })), /*#__PURE__*/React.createElement(Btn, {
+    onClick: () => onSave({
+      ...f,
+      role: 'SSA1'
+    }),
+    disabled: !f.name || !f.employeeId,
+    size: "lg",
+    style: {
+      width: '100%',
+      justifyContent: 'center',
+      marginTop: 8
+    }
+  }, "Get Started ", /*#__PURE__*/React.createElement(Icon, {
+    name: "arrowRight",
+    size: 16
+  }))));
+}
+
+// ── CONSTANTS ─────────────────────────────────────────────────────────────────
+const VF = ['Name', 'Address', 'Household Members', 'Employment', 'Income', 'Housing Conditions'];
+const GRANT_TYPES = ['Compassionate', 'Medical', 'Funeral', 'House Repair', 'Rehabilitation', 'Business', 'Emergency', 'Education & Social Intervention'];
+const GRANT_METHOD = {
+  'Compassionate': 'Office interview + home visit',
+  'Medical': 'Office interview + possible home visit',
+  'Funeral': 'Office interview only',
+  'House Repair': 'Home visit only',
+  'Rehabilitation': 'Office interview + home visit',
+  'Business': 'Office interview + home visit',
+  'Emergency': 'Office processing — urgent',
+  'Education & Social Intervention': 'Office interview only'
+};
+const ASSETS = ['Laptop/Computer', 'Desktop Computer', 'Tablet', 'Car/Motor Vehicle', 'Motorbike', 'TV', 'Refrigerator', 'Freezer', 'Washing Machine', 'Microwave', 'Stove', 'Air Conditioner', 'DVD Player', 'Stereo System', 'Cable TV', 'Internet Connection', 'Land Phone', 'Cell Phone', 'Generator', 'Farm Animal'];
+
+
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
 function Dashboard({
   state,
@@ -6467,4 +6895,93 @@ try {
 </html>borderRadius: 8
     }
   })))))), React.createElement('div', { style: { marginTop: 24, borderTop: '1px solid ' + C.border, paddingTop: 16 } }, React.createElement(VisitLog, { caseId: p.id, caseType: 'path', officerName: officerName, dispatch: dispatch })));
+}
+
+function useSync(state, dispatch) {
+  const oid = state.authUser?.id;
+  const pullAbort = useRef(null);
+
+  const writeOp = useCallback(async (action, table, row, id) => {
+    const online = navigator.onLine;
+    if (action === 'upsert') {
+      const fullRow = { ...row, officer_id: oid, updated_at: new Date().toISOString() };
+      if (online) {
+        try { await sbUpsert(table, fullRow); return; }
+        catch (e) { console.warn('write failed, queuing', e); }
+      }
+      await enqueue({ action: 'upsert', table, row: fullRow });
+    } else {
+      if (online) {
+        try { await sbDelete(table, id); return; }
+        catch (e) { console.warn('delete failed, queuing', e); }
+      }
+      await enqueue({ action: 'delete', table, id });
+    }
+    const q = await dequeueAll();
+    dispatch({ type: 'SET_PENDING', p: q.length });
+  }, [oid]);
+
+  const pull = useCallback(async () => {
+    if (!navigator.onLine || !oid) return;
+    if (pullAbort.current) pullAbort.current.abort();
+    pullAbort.current = new AbortController();
+    const [clients, path, grants, deliveries, pos] = await Promise.all([
+      sbSelect('ssa_clients', oid, 'id,name,dob,nis,trn,phone,address,parish,community,street,lot_number,lat,lng,directions,created_at,updated_at'),
+      sbSelect('ssa_path_cases', oid, 'id,client_id,client_name,case_type,status,residential_address,mailing_address,parish,community,street,lot_number,lat,lng,directions,employment,income,visit_date,next_review,notes,payee_name,payee_trn,bank_name,account_number,dob,trn,nis,assigned_date,family_no,physical_condition,interview_notes,investigation_findings,recommended_amount,specific_reason,created_at,updated_at'),
+      sbSelect('ssa_grants', oid, 'id,client_id,client_name,grant_type,compassionate_subtype,status,address,parish,community,street,lot_number,lat,lng,directions,marital_status,employment,income,purpose,amount,method,dob,trn,nis,phone,telephone,household_members,assets,notes,assigned_date,physical_condition,specific_reason,interview_notes,investigation_findings,recommended_amount,created_at,updated_at'),
+      sbSelect('ssa_deliveries', oid, 'id,post_office,post_office_community,lat,lng,delivery_date,batch_ref,cheque_count,receipt_details,notes,status,created_at,updated_at'),
+      sbSelect('ssa_post_offices', oid, 'id,name,community,lat,lng,created_at,updated_at'),
+    ]);
+    dispatch({ type: 'LOAD_ALL', clients, path, grants, deliveries, pos });
+  }, [oid]);
+
+  const syncNow = useCallback(async () => {
+    if (!navigator.onLine) return;
+    dispatch({ type: 'SET_SYNCING', p: true });
+    try {
+      const synced = await flushQueue();
+      const remaining = await dequeueAll();
+      dispatch({ type: 'SET_PENDING', p: remaining.length });
+      if (synced > 0 || remaining.length === 0) await pull();
+    } catch (e) {
+      console.warn('sync err', e);
+    }
+    dispatch({ type: 'SET_SYNCING', p: false });
+  }, [pull]);
+
+  useEffect(() => {
+    const up = () => { dispatch({ type: 'SET_ONLINE', p: true }); syncNow(); };
+    const dn = () => dispatch({ type: 'SET_ONLINE', p: false });
+    window.addEventListener('online', up);
+    window.addEventListener('offline', dn);
+    return () => { window.removeEventListener('online', up); window.removeEventListener('offline', dn); };
+  }, [syncNow]);
+
+  // Expose syncNow globally for SW background sync messages
+  useEffect(() => { window.__ssaSyncNow = syncNow; }, [syncNow]);
+  useEffect(() => { if (oid) pull(); }, [oid]);
+  useEffect(() => {
+    dequeueAll().then(q => dispatch({ type: 'SET_PENDING', p: q.length }));
+  }, []);
+
+  return { writeOp, syncNow };
+}
+
+// -- SYNC DISPATCH ---------------------------------------------------------
+function useSyncDispatch(dispatch, writeOp) {
+  return useCallback(action => {
+    dispatch(action);
+    const TABLE_MAP = {
+      ADD_CLIENT: ['upsert', 'ssa_clients'], UPD_CLIENT: ['upsert', 'ssa_clients'], DEL_CLIENT: ['delete', 'ssa_clients'],
+      ADD_PATH:   ['upsert', 'ssa_path_cases'], UPD_PATH: ['upsert', 'ssa_path_cases'], DEL_PATH: ['delete', 'ssa_path_cases'],
+      ADD_GRANT:  ['upsert', 'ssa_grants'], UPD_GRANT: ['upsert', 'ssa_grants'], DEL_GRANT: ['delete', 'ssa_grants'],
+      ADD_DEL:    ['upsert', 'ssa_deliveries'], UPD_DEL: ['upsert', 'ssa_deliveries'], DEL_DEL: ['delete', 'ssa_deliveries'],
+      ADD_PO:     ['upsert', 'ssa_post_offices'], DEL_PO: ['delete', 'ssa_post_offices']
+    };
+    const m = TABLE_MAP[action.type];
+    if (!m) return;
+    const [op, table] = m;
+    if (op === 'upsert') writeOp('upsert', table, action.p);
+    else writeOp('delete', table, null, action.p);
+  }, [dispatch, writeOp]);
 }
