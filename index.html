@@ -267,7 +267,7 @@ const TABLE_COLUMNS = {
   ssa_path_cases: ['id','officer_id','client_id','client_name','case_type',
     'status','residential_address','mailing_address',
     'parish','community','street','lot_number','lat','lng',
-    'directions','employment','income',
+    'directions',
     'visit_date','next_review','notes',
     'payee_name','payee_trn','bank_name','account_number','dob','trn','nis',
     'assigned_date','family_no','physical_condition','interview_notes',
@@ -276,7 +276,7 @@ const TABLE_COLUMNS = {
   ssa_grants: ['id','officer_id','client_id','client_name','grant_type',
     'compassionate_subtype',
     'status','address','parish','community','street','lot_number','lat','lng',
-    'directions','marital_status','employment','income',
+    'directions','marital_status',
     'purpose','amount','method','dob','trn','nis','phone','telephone',
     'household_members','assets','notes','created_at','updated_at'],
   ssa_deliveries: ['id','officer_id','post_office','post_office_community',
@@ -1313,6 +1313,138 @@ const VfySelect = ({
   options: ['Confirmed True', 'Discrepancy Found', 'Could Not Verify'],
   placeholder: "— select —"
 });
+
+const Sec = ({ title, children }) => /*#__PURE__*/React.createElement(Card, {
+  style: { marginBottom: 20 }
+}, /*#__PURE__*/React.createElement("div", {
+  style: { fontWeight: 700, fontSize: 13, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }
+}, title), children);
+
+const BackBtn = ({ onClick }) => /*#__PURE__*/React.createElement("button", {
+  onClick: onClick,
+  style: { background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: C.primary, fontSize: 14, fontWeight: 600, padding: '4px 0' }
+}, /*#__PURE__*/React.createElement(Icon, { name: 'chevronLeft', size: 18, color: C.primary }), "Back");
+
+// -- ST. THOMAS LOCATION DATA ------------------------------------------------
+const ST_THOMAS_PARISH = 'St. Thomas';
+const ST_THOMAS_COMMUNITIES = {
+  'Morant Bay': { lat: 17.8820, lng: -76.4090, streets: ['Church Street','Queen Street','King Street','High Street','Gayle Street','West Street','East Street','Market Street','Fort Street','Harbour Street','Barracks Road','Bell Lane','Duck Street','Blythe Street'] },
+  'Yallahs': { lat: 17.8750, lng: -76.5640, streets: ['Main Road','Market Lane','Bay Road','School Road','Church Road','Back Road'] },
+  'Port Morant': { lat: 17.8910, lng: -76.3270, streets: ['Harbour Street','Main Street','Sea Road','Church Lane','School Lane'] },
+  'Lyssons': { lat: 17.8706, lng: -76.4850, streets: ['Main Road','Beach Road','Lyssons Drive'] },
+  'Seaforth': { lat: 17.9012, lng: -76.4631, streets: ['Main Road','School Road','Church Road','Back Road'] },
+  'Golden Grove': { lat: 17.9042, lng: -76.5093, streets: ['Main Road','Golden Grove Road','School Lane'] },
+  'Bull Bay': { lat: 17.9300, lng: -76.6680, streets: ['Main Road','Bull Bay Road','Sea View Drive','Church Road'] },
+  'Cedar Valley': { lat: 18.0001, lng: -76.5167, streets: ['Main Road','Valley Road'] },
+  'Bath': { lat: 18.0057, lng: -76.3715, streets: ['Main Street','Fountain Road','Bath Road','Church Street'] },
+  'Dalvey': { lat: 17.9300, lng: -76.3800, streets: ['Main Road','Dalvey Road'] },
+  'Duckenfield': { lat: 17.9200, lng: -76.3500, streets: ['Main Road','Factory Road'] },
+  'Manchioneal': { lat: 18.0450, lng: -76.2900, streets: ['Main Road','Sea Road','Back Road'] },
+  'Retreat': { lat: 17.9800, lng: -76.3600, streets: ['Main Road','Retreat Road'] },
+  'Albion': { lat: 17.9600, lng: -76.4200, streets: ['Main Road','Albion Road'] },
+  'White Horses': { lat: 17.8550, lng: -76.5000, streets: ['Main Road','White Horses Drive'] },
+  'Rozelle': { lat: 17.9100, lng: -76.4500, streets: ['Main Road','Rozelle Drive'] },
+  'Trinityville': { lat: 18.0200, lng: -76.4700, streets: ['Main Road','Trinity Road'] },
+  'Leith Hall': { lat: 17.9700, lng: -76.4900, streets: ['Main Road','Leith Hall Drive'] },
+  'Pamphret': { lat: 17.9500, lng: -76.3300, streets: ['Main Road','Pamphret Road'] },
+  'Wheelerfield': { lat: 17.9000, lng: -76.4000, streets: ['Main Road','Wheelerfield Drive'] },
+  'Prospect': { lat: 17.8800, lng: -76.4400, streets: ['Main Road','Prospect Drive'] },
+  'Sunning Hill': { lat: 17.9200, lng: -76.5100, streets: ['Main Road','Sunning Hill Drive'] },
+  'Cuna': { lat: 17.9900, lng: -76.3400, streets: ['Main Road'] },
+  'Stokes Hall': { lat: 17.9700, lng: -76.3200, streets: ['Main Road','Stokes Hall Road'] },
+  'Whitehall': { lat: 17.9012, lng: -76.4631, streets: ['Main Road','Whitehall Road'] },
+  'St. Thomas (Other)': { lat: 17.9300, lng: -76.4000, streets: ['Main Road'] }
+};
+const ST_THOMAS_POST_OFFICES = [
+  { name: 'Morant Bay Post Office', community: 'Morant Bay' },
+  { name: 'Yallahs Post Office', community: 'Yallahs' },
+  { name: 'Port Morant Post Office', community: 'Port Morant' },
+  { name: 'Bath Post Office', community: 'Bath' },
+  { name: 'Seaforth Post Office', community: 'Seaforth' },
+  { name: 'White Horses Post Office', community: 'White Horses' },
+  { name: 'Bull Bay Post Office', community: 'Bull Bay' },
+  { name: 'Manchioneal Post Office', community: 'Manchioneal' },
+];
+const COMPASSIONATE_SUBTYPES = ['Medical', 'Funeral', 'House Repair'];
+
+function resolveLatLng(community) {
+  const c = ST_THOMAS_COMMUNITIES[community];
+  return c ? { lat: c.lat, lng: c.lng } : null;
+}
+function lookupCommunity(address) {
+  if (!address) return null;
+  const norm = address.toLowerCase().trim();
+  for (const [name, data] of Object.entries(ST_THOMAS_COMMUNITIES)) {
+    if (norm.includes(name.toLowerCase())) return { lat: data.lat, lng: data.lng, display: name };
+  }
+  return null;
+}
+function LocationPicker({ value, onChange }) {
+  const parish = ST_THOMAS_PARISH;
+  const community = value.community || '';
+  const street = value.street || '';
+  const lot_number = value.lot_number || '';
+  const communityNames = Object.keys(ST_THOMAS_COMMUNITIES);
+  const streets = community && ST_THOMAS_COMMUNITIES[community] ? ST_THOMAS_COMMUNITIES[community].streets : [];
+  const update = (patch) => {
+    const next = { ...value, ...patch, parish };
+    if (patch.community !== undefined) {
+      const coords = resolveLatLng(patch.community);
+      next.lat = coords ? coords.lat : null;
+      next.lng = coords ? coords.lng : null;
+      next.street = '';
+    }
+    onChange(next);
+  };
+  return React.createElement(React.Fragment, null,
+    React.createElement(Field, { label: 'Parish' },
+      React.createElement('div', { style: { padding: '9px 12px', border: '1px solid ' + C.border, borderRadius: 8, fontSize: 14, background: '#f5f5f5', color: C.textMuted } },
+        parish, ' ', React.createElement('span', { style: { fontSize: 11 } }, '(fixed)'))
+    ),
+    React.createElement(Field, { label: 'Community', required: true },
+      React.createElement('select', {
+        value: community, onChange: e => update({ community: e.target.value }),
+        style: { width: '100%', padding: '9px 12px', border: '1px solid ' + C.border, borderRadius: 8, fontSize: 14, background: C.surface }
+      },
+        React.createElement('option', { value: '' }, '-- select community --'),
+        communityNames.map(n => React.createElement('option', { key: n, value: n }, n))
+      )
+    ),
+    community ? React.createElement(Field, { label: 'Street / Road', hint: 'Select from list or type a custom name' },
+      React.createElement('select', {
+        value: streets.includes(street) ? street : (street ? '__other__' : ''),
+        onChange: e => update({ street: e.target.value === '__other__' ? '' : e.target.value }),
+        style: { width: '100%', padding: '9px 12px', border: '1px solid ' + C.border, borderRadius: 8, fontSize: 14, background: C.surface }
+      },
+        React.createElement('option', { value: '' }, '-- select street --'),
+        streets.map(s => React.createElement('option', { key: s, value: s }, s)),
+        React.createElement('option', { value: '__other__' }, 'Other (type below)')
+      ),
+      (!streets.includes(street) && street !== '') &&
+        React.createElement('input', {
+          type: 'text', value: street,
+          onChange: e => update({ street: e.target.value }),
+          placeholder: 'Type street / road name',
+          style: { width: '100%', padding: '9px 12px', border: '1px solid ' + C.border, borderRadius: 8, fontSize: 14, background: C.surface, marginTop: 6 }
+        })
+    ) : null,
+    React.createElement(Field, { label: 'Lot / House Number', hint: 'e.g. Lot 5, House 12' },
+      React.createElement('input', {
+        type: 'text', value: lot_number,
+        onChange: e => update({ lot_number: e.target.value }),
+        placeholder: 'Lot 5',
+        style: { width: '100%', padding: '9px 12px', border: '1px solid ' + C.border, borderRadius: 8, fontSize: 14, background: C.surface }
+      })
+    ),
+    (value.lat && value.lng) ? React.createElement('div', {
+      style: { display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', background: C.primaryLight, borderRadius: 6, marginBottom: 14, fontSize: 12, color: C.primaryDark }
+    }, React.createElement(Icon, { name: 'mapPin', size: 13, color: C.primary }),
+      'Pin set: ' + community + (street && street !== '__other__' ? ', ' + street : '')
+    ) : (community ? React.createElement('div', { style: { fontSize: 12, color: C.warning, marginBottom: 14 } },
+      'Community not yet in index -- pin will need manual confirmation') : null)
+  );
+}
+
 
 // -- useDraftAutoSave (Feature 48) -----------------------------------------
 // Auto-saves form state to IDB every 30s. Restores on remount if a draft exists.
@@ -6565,8 +6697,8 @@ function useSync(state, dispatch) {
     pullAbort.current = new AbortController();
     const [clients, path, grants, deliveries, pos] = await Promise.all([
       sbSelect('ssa_clients', oid, 'id,name,dob,nis,trn,phone,address,parish,community,street,lot_number,lat,lng,directions,created_at,updated_at'),
-      sbSelect('ssa_path_cases', oid, 'id,client_id,client_name,case_type,status,residential_address,mailing_address,parish,community,street,lot_number,lat,lng,directions,employment,income,visit_date,next_review,notes,payee_name,payee_trn,bank_name,account_number,dob,trn,nis,assigned_date,family_no,physical_condition,interview_notes,investigation_findings,recommended_amount,specific_reason,created_at,updated_at'),
-      sbSelect('ssa_grants', oid, 'id,client_id,client_name,grant_type,compassionate_subtype,status,address,parish,community,street,lot_number,lat,lng,directions,marital_status,employment,income,purpose,amount,method,dob,trn,nis,phone,telephone,household_members,assets,notes,assigned_date,physical_condition,specific_reason,interview_notes,investigation_findings,recommended_amount,created_at,updated_at'),
+      sbSelect('ssa_path_cases', oid, 'id,client_id,client_name,case_type,status,residential_address,mailing_address,parish,community,street,lot_number,lat,lng,directions,visit_date,next_review,notes,payee_name,payee_trn,bank_name,account_number,dob,trn,nis,assigned_date,family_no,physical_condition,interview_notes,investigation_findings,recommended_amount,specific_reason,created_at,updated_at'),
+      sbSelect('ssa_grants', oid, 'id,client_id,client_name,grant_type,compassionate_subtype,status,address,parish,community,street,lot_number,lat,lng,directions,marital_status,purpose,amount,method,dob,trn,nis,phone,telephone,household_members,assets,notes,assigned_date,physical_condition,specific_reason,interview_notes,investigation_findings,recommended_amount,created_at,updated_at'),
       sbSelect('ssa_deliveries', oid, 'id,post_office,post_office_community,lat,lng,delivery_date,batch_ref,cheque_count,receipt_details,notes,status,created_at,updated_at'),
       sbSelect('ssa_post_offices', oid, 'id,name,community,lat,lng,created_at,updated_at'),
     ]);
