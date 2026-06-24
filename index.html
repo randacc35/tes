@@ -6535,6 +6535,94 @@ function InstallBanner() {
 }
 
 // ── ROOT ──────────────────────────────────────────────────────────────────────
+function useSync(state, dispatch) {
+  const oid = state.authUser?.id;
+  const pullAbort = useRef(null);
+
+  const writeOp = useCallback(async (action, table, row, id) => {
+    const online = navigator.onLine;
+    if (action === 'upsert') {
+      const fullRow = { ...row, officer_id: oid, updated_at: new Date().toISOString() };
+      if (online) {
+        try { await sbUpsert(table, fullRow); return; }
+        catch (e) { console.warn('write failed, queuing', e); }
+      }
+      await enqueue({ action: 'upsert', table, row: fullRow });
+    } else {
+      if (online) {
+        try { await sbDelete(table, id); return; }
+        catch (e) { console.warn('delete failed, queuing', e); }
+      }
+      await enqueue({ action: 'delete', table, id });
+    }
+    const q = await dequeueAll();
+    dispatch({ type: 'SET_PENDING', p: q.length });
+  }, [oid]);
+
+  const pull = useCallback(async () => {
+    if (!navigator.onLine || !oid) return;
+    if (pullAbort.current) pullAbort.current.abort();
+    pullAbort.current = new AbortController();
+    const [clients, path, grants, deliveries, pos] = await Promise.all([
+      sbSelect('ssa_clients', oid, 'id,name,dob,nis,trn,phone,address,parish,community,street,lot_number,lat,lng,directions,created_at,updated_at'),
+      sbSelect('ssa_path_cases', oid, 'id,client_id,client_name,case_type,status,residential_address,mailing_address,parish,community,street,lot_number,lat,lng,directions,employment,income,visit_date,next_review,notes,payee_name,payee_trn,bank_name,account_number,dob,trn,nis,assigned_date,family_no,physical_condition,interview_notes,investigation_findings,recommended_amount,specific_reason,created_at,updated_at'),
+      sbSelect('ssa_grants', oid, 'id,client_id,client_name,grant_type,compassionate_subtype,status,address,parish,community,street,lot_number,lat,lng,directions,marital_status,employment,income,purpose,amount,method,dob,trn,nis,phone,telephone,household_members,assets,notes,assigned_date,physical_condition,specific_reason,interview_notes,investigation_findings,recommended_amount,created_at,updated_at'),
+      sbSelect('ssa_deliveries', oid, 'id,post_office,post_office_community,lat,lng,delivery_date,batch_ref,cheque_count,receipt_details,notes,status,created_at,updated_at'),
+      sbSelect('ssa_post_offices', oid, 'id,name,community,lat,lng,created_at,updated_at'),
+    ]);
+    dispatch({ type: 'LOAD_ALL', clients, path, grants, deliveries, pos });
+  }, [oid]);
+
+  const syncNow = useCallback(async () => {
+    if (!navigator.onLine) return;
+    dispatch({ type: 'SET_SYNCING', p: true });
+    try {
+      const synced = await flushQueue();
+      const remaining = await dequeueAll();
+      dispatch({ type: 'SET_PENDING', p: remaining.length });
+      if (synced > 0 || remaining.length === 0) await pull();
+    } catch (e) {
+      console.warn('sync err', e);
+    }
+    dispatch({ type: 'SET_SYNCING', p: false });
+  }, [pull]);
+
+  useEffect(() => {
+    const up = () => { dispatch({ type: 'SET_ONLINE', p: true }); syncNow(); };
+    const dn = () => dispatch({ type: 'SET_ONLINE', p: false });
+    window.addEventListener('online', up);
+    window.addEventListener('offline', dn);
+    return () => { window.removeEventListener('online', up); window.removeEventListener('offline', dn); };
+  }, [syncNow]);
+
+  // Expose syncNow globally for SW background sync messages
+  useEffect(() => { window.__ssaSyncNow = syncNow; }, [syncNow]);
+  useEffect(() => { if (oid) pull(); }, [oid]);
+  useEffect(() => {
+    dequeueAll().then(q => dispatch({ type: 'SET_PENDING', p: q.length }));
+  }, []);
+
+  return { writeOp, syncNow };
+}
+
+// -- SYNC DISPATCH ---------------------------------------------------------
+function useSyncDispatch(dispatch, writeOp) {
+  return useCallback(action => {
+    dispatch(action);
+    const TABLE_MAP = {
+      ADD_CLIENT: ['upsert', 'ssa_clients'], UPD_CLIENT: ['upsert', 'ssa_clients'], DEL_CLIENT: ['delete', 'ssa_clients'],
+      ADD_PATH:   ['upsert', 'ssa_path_cases'], UPD_PATH: ['upsert', 'ssa_path_cases'], DEL_PATH: ['delete', 'ssa_path_cases'],
+      ADD_GRANT:  ['upsert', 'ssa_grants'], UPD_GRANT: ['upsert', 'ssa_grants'], DEL_GRANT: ['delete', 'ssa_grants'],
+      ADD_DEL:    ['upsert', 'ssa_deliveries'], UPD_DEL: ['upsert', 'ssa_deliveries'], DEL_DEL: ['delete', 'ssa_deliveries'],
+      ADD_PO:     ['upsert', 'ssa_post_offices'], DEL_PO: ['delete', 'ssa_post_offices']
+    };
+    const m = TABLE_MAP[action.type];
+    if (!m) return;
+    const [op, table] = m;
+    if (op === 'upsert') writeOp('upsert', table, action.p);
+    else writeOp('delete', table, null, action.p);
+  }, [dispatch, writeOp]);
+}
 function App() {
   const [state, dispatch] = useReducer(reducer, INIT);
   const _initPage = (() => {
@@ -6895,93 +6983,4 @@ try {
 </html>borderRadius: 8
     }
   })))))), React.createElement('div', { style: { marginTop: 24, borderTop: '1px solid ' + C.border, paddingTop: 16 } }, React.createElement(VisitLog, { caseId: p.id, caseType: 'path', officerName: officerName, dispatch: dispatch })));
-}
-
-function useSync(state, dispatch) {
-  const oid = state.authUser?.id;
-  const pullAbort = useRef(null);
-
-  const writeOp = useCallback(async (action, table, row, id) => {
-    const online = navigator.onLine;
-    if (action === 'upsert') {
-      const fullRow = { ...row, officer_id: oid, updated_at: new Date().toISOString() };
-      if (online) {
-        try { await sbUpsert(table, fullRow); return; }
-        catch (e) { console.warn('write failed, queuing', e); }
-      }
-      await enqueue({ action: 'upsert', table, row: fullRow });
-    } else {
-      if (online) {
-        try { await sbDelete(table, id); return; }
-        catch (e) { console.warn('delete failed, queuing', e); }
-      }
-      await enqueue({ action: 'delete', table, id });
-    }
-    const q = await dequeueAll();
-    dispatch({ type: 'SET_PENDING', p: q.length });
-  }, [oid]);
-
-  const pull = useCallback(async () => {
-    if (!navigator.onLine || !oid) return;
-    if (pullAbort.current) pullAbort.current.abort();
-    pullAbort.current = new AbortController();
-    const [clients, path, grants, deliveries, pos] = await Promise.all([
-      sbSelect('ssa_clients', oid, 'id,name,dob,nis,trn,phone,address,parish,community,street,lot_number,lat,lng,directions,created_at,updated_at'),
-      sbSelect('ssa_path_cases', oid, 'id,client_id,client_name,case_type,status,residential_address,mailing_address,parish,community,street,lot_number,lat,lng,directions,employment,income,visit_date,next_review,notes,payee_name,payee_trn,bank_name,account_number,dob,trn,nis,assigned_date,family_no,physical_condition,interview_notes,investigation_findings,recommended_amount,specific_reason,created_at,updated_at'),
-      sbSelect('ssa_grants', oid, 'id,client_id,client_name,grant_type,compassionate_subtype,status,address,parish,community,street,lot_number,lat,lng,directions,marital_status,employment,income,purpose,amount,method,dob,trn,nis,phone,telephone,household_members,assets,notes,assigned_date,physical_condition,specific_reason,interview_notes,investigation_findings,recommended_amount,created_at,updated_at'),
-      sbSelect('ssa_deliveries', oid, 'id,post_office,post_office_community,lat,lng,delivery_date,batch_ref,cheque_count,receipt_details,notes,status,created_at,updated_at'),
-      sbSelect('ssa_post_offices', oid, 'id,name,community,lat,lng,created_at,updated_at'),
-    ]);
-    dispatch({ type: 'LOAD_ALL', clients, path, grants, deliveries, pos });
-  }, [oid]);
-
-  const syncNow = useCallback(async () => {
-    if (!navigator.onLine) return;
-    dispatch({ type: 'SET_SYNCING', p: true });
-    try {
-      const synced = await flushQueue();
-      const remaining = await dequeueAll();
-      dispatch({ type: 'SET_PENDING', p: remaining.length });
-      if (synced > 0 || remaining.length === 0) await pull();
-    } catch (e) {
-      console.warn('sync err', e);
-    }
-    dispatch({ type: 'SET_SYNCING', p: false });
-  }, [pull]);
-
-  useEffect(() => {
-    const up = () => { dispatch({ type: 'SET_ONLINE', p: true }); syncNow(); };
-    const dn = () => dispatch({ type: 'SET_ONLINE', p: false });
-    window.addEventListener('online', up);
-    window.addEventListener('offline', dn);
-    return () => { window.removeEventListener('online', up); window.removeEventListener('offline', dn); };
-  }, [syncNow]);
-
-  // Expose syncNow globally for SW background sync messages
-  useEffect(() => { window.__ssaSyncNow = syncNow; }, [syncNow]);
-  useEffect(() => { if (oid) pull(); }, [oid]);
-  useEffect(() => {
-    dequeueAll().then(q => dispatch({ type: 'SET_PENDING', p: q.length }));
-  }, []);
-
-  return { writeOp, syncNow };
-}
-
-// -- SYNC DISPATCH ---------------------------------------------------------
-function useSyncDispatch(dispatch, writeOp) {
-  return useCallback(action => {
-    dispatch(action);
-    const TABLE_MAP = {
-      ADD_CLIENT: ['upsert', 'ssa_clients'], UPD_CLIENT: ['upsert', 'ssa_clients'], DEL_CLIENT: ['delete', 'ssa_clients'],
-      ADD_PATH:   ['upsert', 'ssa_path_cases'], UPD_PATH: ['upsert', 'ssa_path_cases'], DEL_PATH: ['delete', 'ssa_path_cases'],
-      ADD_GRANT:  ['upsert', 'ssa_grants'], UPD_GRANT: ['upsert', 'ssa_grants'], DEL_GRANT: ['delete', 'ssa_grants'],
-      ADD_DEL:    ['upsert', 'ssa_deliveries'], UPD_DEL: ['upsert', 'ssa_deliveries'], DEL_DEL: ['delete', 'ssa_deliveries'],
-      ADD_PO:     ['upsert', 'ssa_post_offices'], DEL_PO: ['delete', 'ssa_post_offices']
-    };
-    const m = TABLE_MAP[action.type];
-    if (!m) return;
-    const [op, table] = m;
-    if (op === 'upsert') writeOp('upsert', table, action.p);
-    else writeOp('delete', table, null, action.p);
-  }, [dispatch, writeOp]);
 }
