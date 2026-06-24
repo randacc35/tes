@@ -1,6 +1,6 @@
 // SSA Companion SW v12 — optimised caching + Background Sync
 // ─────────────────────────────────────────────────────────────────────
-const CACHE_APP   = 'ssa-app-v12';   // versioned app shell + static assets
+const CACHE_APP   = 'ssa-app-v13';   // versioned app shell + static assets
 const CACHE_TILES = 'ssa-tiles-v1';  // map tiles (separate, survives app updates)
 const MAX_TILES   = 500;             // cap tile cache to ~50 MB
 const BASE        = '/tes';
