@@ -13,6 +13,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Sora:wght@600;700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body,#root{height:100%;width:100%}
@@ -38,6 +39,7 @@ input,textarea,select,button{font-family:'DM Sans',sans-serif}
 <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 const {
   useState,
@@ -1086,14 +1088,25 @@ const StatusBadge = ({
     color: m[status] || C.textMuted
   });
 };
+const VERIFICATION_RESULTS = [
+  '1. Non existent address',
+  '2. False address',
+  '3. Address out of parish',
+  '4. Incorrect information',
+  '5. Correct information',
+  '6. Cannot be located',
+  '7. Failed to give information',
+  '8. Denied access to premises',
+  '9. Violence/attack'
+];
 const VfySelect = ({
   value,
   onChange
 }) => /*#__PURE__*/React.createElement(Sel, {
   value: value,
   onChange: onChange,
-  options: ['Confirmed True', 'Discrepancy Found', 'Could Not Verify'],
-  placeholder: "— select —"
+  options: VERIFICATION_RESULTS,
+  placeholder: "— select result —"
 });
 const PhotoAttach = ({
   photos = [],
@@ -1202,12 +1215,14 @@ const IR = ({
     fontSize: 13
   }
 }, value)) : null;
+
 const VB = ({
   r
 }) => /*#__PURE__*/React.createElement(Badge, {
   label: r,
-  color: r === 'Confirmed True' ? C.success : r === 'Discrepancy Found' ? C.danger : C.warning
+  color: r && r.startsWith('5.') ? C.success : r && (r.startsWith('1.') || r.startsWith('2.') || r.startsWith('9.')) ? C.danger : r ? C.warning : C.textMuted
 });
+
 const BackBtn = ({
   onClick
 }) => /*#__PURE__*/React.createElement("button", {
@@ -1774,7 +1789,6 @@ function ProfileSetup({
 }
 
 // ── CONSTANTS ─────────────────────────────────────────────────────────────────
-const VF = ['Name', 'Address', 'Household Members', 'Employment', 'Income', 'Housing Conditions'];
 const GRANT_TYPES = ['Rehabilitation/Business', 'Compassionate House Repair', 'Medical', 'Funeral', 'Emergency', 'Education & Social Intervention', 'Addition', 'Appeals'];
 const GRANT_METHOD = {
   'Rehabilitation/Business': 'Office interview + home visit',
@@ -1986,6 +2000,55 @@ function LocationPicker({ value, onChange }) {
     ) : (community ? React.createElement('div', {
       style: { fontSize: 12, color: C.warning, marginBottom: 14 }
     }, '⚠ Community not in map index — use "Use my current location" above to set an exact pin') : null)
+  );
+}
+
+// ── MINIMAL PIN MAP ────────────────────────────────────────────────────────────
+// Shows exactly one marker at a fixed lat/lng. No routing, no live GPS tracking,
+// no satellite toggle, no filters — just "where is this pin". Used on detail
+// screens (Client, PATH, Grant) so a saved pin can be seen without going back
+// into edit mode.
+function PinMap({ lat, lng, label, exactPin }) {
+  const mapRef = useRef(null);
+  const leafletMap = useRef(null);
+
+  useEffect(() => {
+    if (!mapRef.current || lat == null || lng == null) return;
+    const m = L.map(mapRef.current, {
+      zoomControl: true,
+      attributionControl: false,
+      dragging: true,
+      scrollWheelZoom: false
+    }).setView([lat, lng], 15);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(m);
+    const icon = L.divIcon({
+      html: `<div style="width:24px;height:24px;background:${exactPin ? '#2E7D32' : '#0D6E6E'};border:3px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 6px rgba(0,0,0,.4)"></div>`,
+      className: '',
+      iconSize: [24, 24],
+      iconAnchor: [12, 24]
+    });
+    L.marker([lat, lng], { icon }).addTo(m).bindPopup(label || 'Pin location');
+    leafletMap.current = m;
+    return () => { m.remove(); leafletMap.current = null; };
+  }, [lat, lng, label, exactPin]);
+
+  if (lat == null || lng == null) {
+    return React.createElement('div', {
+      style: { padding: '14px 12px', textAlign: 'center', color: C.textMuted, fontSize: 12, border: `1px dashed ${C.border}`, borderRadius: 8 }
+    }, 'No pin set yet');
+  }
+
+  return React.createElement('div', null,
+    React.createElement('div', {
+      ref: mapRef,
+      style: { width: '100%', height: 180, borderRadius: 8, overflow: 'hidden', border: `1px solid ${C.border}` }
+    }),
+    React.createElement('div', {
+      style: { fontSize: 11, color: exactPin ? '#2E7D32' : C.textMuted, marginTop: 6, display: 'flex', alignItems: 'center', gap: 4 }
+    },
+      React.createElement(Icon, { name: 'mapPin', size: 12, color: exactPin ? '#2E7D32' : C.textMuted }),
+      exactPin ? 'Exact GPS pin' : 'Approximate pin (community centroid)'
+    )
   );
 }
 
@@ -2500,7 +2563,10 @@ function ClientDetail({
       fontSize: 14,
       marginTop: 2
     }
-  }, v)) : null)), /*#__PURE__*/React.createElement("h3", {
+  }, v)) : null)), React.createElement(Card, { style: { marginBottom: 16 } },
+    React.createElement('p', { style: { fontSize: 11, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 8 } }, 'Map Pin'),
+    React.createElement(PinMap, { lat: client.lat, lng: client.lng, label: client.name, exactPin: !!client.exact_pin })
+  ), /*#__PURE__*/React.createElement("h3", {
     style: {
       fontSize: 13,
       color: C.textMuted,
@@ -2766,15 +2832,9 @@ function PathForm({
     exact_pin: false,
     gps_accuracy: null,
     directions: '',
-    household_members: [],
-    verifications: {},
-    verification_notes: {},
-    findings_narrative: '',
-    recommendation: '',
-    photos: [],
-    application_result: '',
-    interview_date: '',
     verification_result: '',
+    verification_notes: '',
+    photos: [],
     field_officer: ''
   };
   const [f, setF] = useState(pathCase || blank);
@@ -2796,19 +2856,7 @@ function PathForm({
       directions: cl.directions || ''
     })); else set('client_id')(cid);
   };
-  const addM = () => setF(p => ({
-    ...p,
-    household_members: [...p.household_members, { id: uid(), name: '', dob: '', trn: '', nis: '', sex: '', profession: '', relationship: '', disability: false, pregnant: false }]
-  }));
-  const updM = (id, k, v) => setF(p => ({
-    ...p,
-    household_members: p.household_members.map(m => m.id === id ? { ...m, [k]: v } : m)
-  }));
-  const delM = id => setF(p => ({
-    ...p,
-    household_members: p.household_members.filter(m => m.id !== id)
-  }));
-  const TABS = ['Family Head', 'Members', 'Verification', 'Recommendation'];
+  const TABS = ['Family Head', 'Verification'];
   return React.createElement('div', { style: { padding: '16px 16px 100px' } },
     React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 } },
       React.createElement(BackBtn, { onClick: onCancel }),
@@ -2874,82 +2922,21 @@ function PathForm({
       )
     ),
 
-    // TAB 1 — Members
+    // TAB 1 — Verification (single overall result, per the BIS 2010 form's 9-code list)
     tab === 1 && React.createElement(React.Fragment, null,
-      React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 } },
-        React.createElement('p', { style: { fontSize: 13, color: C.textMuted } }, 'One entry per household member'),
-        React.createElement(Btn, { size: 'sm', onClick: addM }, React.createElement(Icon, { name: 'plus', size: 14 }), ' Add')
+      React.createElement(Field, { label: 'Verification Result', required: true },
+        React.createElement(VfySelect, {
+          value: f.verification_result,
+          onChange: set('verification_result')
+        })
       ),
-      f.household_members.length === 0 && React.createElement('div', {
-        style: { textAlign: 'center', padding: 24, color: C.textMuted, border: `1px dashed ${C.border}`, borderRadius: 8 }
-      }, 'No members added'),
-      f.household_members.map((m, i) => React.createElement(Card, { key: m.id, style: { marginBottom: 12 } },
-        React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 10 } },
-          React.createElement('span', { style: { fontWeight: 600, fontSize: 13 } }, 'Member ', i + 1),
-          React.createElement('button', { onClick: () => delM(m.id), style: { background: 'none', border: 'none', cursor: 'pointer', color: C.danger } },
-            React.createElement(Icon, { name: 'trash', size: 15 })
-          )
-        ),
-        React.createElement(Field, { label: 'Name' }, React.createElement(Inp, { value: m.name, onChange: v => updM(m.id, 'name', v) })),
-        React.createElement(Field, { label: 'Date of Birth' }, React.createElement(Inp, { type: 'date', value: m.dob, onChange: v => updM(m.id, 'dob', v) })),
-        React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 } },
-          React.createElement(Field, { label: 'TRN' }, React.createElement(Inp, { value: m.trn, onChange: v => updM(m.id, 'trn', v) })),
-          React.createElement(Field, { label: 'NIS' }, React.createElement(Inp, { value: m.nis, onChange: v => updM(m.id, 'nis', v) })),
-          React.createElement(Field, { label: 'Sex' }, React.createElement(Sel, { value: m.sex, onChange: v => updM(m.id, 'sex', v), options: ['Male', 'Female'], placeholder: '—' })),
-          React.createElement(Field, { label: 'Relationship' }, React.createElement(Inp, { value: m.relationship, onChange: v => updM(m.id, 'relationship', v) }))
-        ),
-        React.createElement(Field, { label: 'Profession' }, React.createElement(Inp, { value: m.profession, onChange: v => updM(m.id, 'profession', v) })),
-        React.createElement('div', { style: { display: 'flex', gap: 16, marginTop: 4 } },
-          [['disability', 'Disability/Illness'], ['pregnant', 'Pregnant']].map(([k, l]) => React.createElement('label', {
-            key: k,
-            style: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }
-          }, React.createElement('input', { type: 'checkbox', checked: m[k] || false, onChange: e => updM(m.id, k, e.target.checked) }), l))
-        )
-      ))
-    ),
-
-    // TAB 2 — Verification (checklist of core eligibility facts; no asset/house grid)
-    tab === 2 && React.createElement(React.Fragment, null,
-      VF.map(field => React.createElement(Card, { key: field, style: { marginBottom: 12 } },
-        React.createElement('p', { style: { fontWeight: 600, fontSize: 13, marginBottom: 8 } }, field),
-        React.createElement(Field, { label: 'Verification Result' },
-          React.createElement(VfySelect, {
-            value: (f.verifications || {})[field],
-            onChange: v => setF(p => ({ ...p, verifications: { ...p.verifications, [field]: v } }))
-          })
-        ),
-        React.createElement(Field, { label: 'Notes' },
-          React.createElement(Txt, {
-            value: (f.verification_notes || {})[field],
-            onChange: v => setF(p => ({ ...p, verification_notes: { ...p.verification_notes, [field]: v } })),
-            rows: 2,
-            placeholder: 'What you observed'
-          })
-        )
-      )),
-      React.createElement(Field, { label: 'Overall Findings Narrative' },
-        React.createElement(Txt, { value: f.findings_narrative, onChange: set('findings_narrative'), rows: 5 })
+      React.createElement(Field, { label: 'Notes', hint: 'What you observed during the interview/visit' },
+        React.createElement(Txt, { value: f.verification_notes, onChange: set('verification_notes'), rows: 5 })
       ),
       React.createElement(Field, { label: 'Photos' },
         React.createElement(PhotoAttach, { photos: f.photos || [], onChange: set('photos') })
-      )
-    ),
-
-    // TAB 3 — Recommendation
-    tab === 3 && React.createElement(React.Fragment, null,
-      React.createElement(Field, { label: 'Recommendation' },
-        React.createElement(Sel, { value: f.recommendation, onChange: set('recommendation'), options: ['Approve', 'Approve with Conditions', 'Reject', 'Refer Back', 'Needs Follow-up'], placeholder: '— select —' })
       ),
-      React.createElement(Field, { label: 'Application Result' },
-        React.createElement(Sel, { value: f.application_result, onChange: set('application_result'), options: ['Provisionally Approved', 'Continue', 'Rejected'], placeholder: '— select —' })
-      ),
-      React.createElement(Field, { label: 'Interview Date' },
-        React.createElement(Inp, { type: 'date', value: f.interview_date, onChange: set('interview_date') })
-      ),
-      React.createElement(Field, { label: 'Verification Result' },
-        React.createElement(Inp, { value: f.verification_result, onChange: set('verification_result') })
-      ),
-      React.createElement(Field, { label: 'Field Officer Name' },
+      React.createElement(Field, { label: 'Name of Field Officer' },
         React.createElement(Inp, { value: f.field_officer, onChange: set('field_officer') })
       ),
       React.createElement('div', { style: { display: 'flex', gap: 10, marginTop: 16 } },
@@ -2962,7 +2949,7 @@ function PathForm({
       )
     ),
 
-    tab < 3 && React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', marginTop: 20 } },
+    tab < 1 && React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', marginTop: 20 } },
       React.createElement(Btn, { onClick: () => setTab(t => t + 1) }, 'Next ', React.createElement(Icon, { name: 'chevronRight', size: 15 }))
     )
   );
@@ -3073,85 +3060,16 @@ function PathDetail({
   }), /*#__PURE__*/React.createElement(IR, {
     label: "Visit Date",
     value: fmtDate(g(p, 'visit_date', 'visitDate'))
-  })), (g(p, 'household_members', 'householdMembers') || []).length > 0 && /*#__PURE__*/React.createElement(Sec, {
-    title: `Household Members (${g(p, 'household_members', 'householdMembers').length})`
-  }, g(p, 'household_members', 'householdMembers').map((m, i) => /*#__PURE__*/React.createElement("div", {
-    key: m.id || i,
-    style: {
-      borderBottom: `1px solid ${C.border}`,
-      paddingBottom: 10,
-      marginBottom: 10
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontWeight: 600,
-      fontSize: 13,
-      marginBottom: 4
-    }
-  }, i + 1, ". ", m.name || '—'), /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 12,
-      color: C.textMuted
-    }
-  }, m.relationship, " · ", m.sex, " · ", fmtDate(m.dob))))), /*#__PURE__*/React.createElement(Sec, {
-    title: "Verification Findings"
-  }, VF.map(field => /*#__PURE__*/React.createElement("div", {
-    key: field,
-    style: {
-      marginBottom: 10
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      marginBottom: 2
-    }
-  }, /*#__PURE__*/React.createElement("span", {
-    style: {
-      fontSize: 13,
-      fontWeight: 600
-    }
-  }, field), (p.verifications || {})[field] && /*#__PURE__*/React.createElement(VB, {
-    r: p.verifications[field]
-  })), (p.verification_notes || {})[field] && /*#__PURE__*/React.createElement("p", {
-    style: {
-      fontSize: 12,
-      color: C.textMuted
-    }
-  }, p.verification_notes[field]))), p.findings_narrative && /*#__PURE__*/React.createElement("div", {
-    style: {
-      marginTop: 12,
-      paddingTop: 12,
-      borderTop: `1px solid ${C.border}`
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 11,
-      color: C.textMuted,
-      marginBottom: 4
-    }
-  }, "Overall Findings"), /*#__PURE__*/React.createElement("p", {
-    style: {
-      fontSize: 13
-    }
-  }, p.findings_narrative))), p.recommendation && /*#__PURE__*/React.createElement(Sec, {
-    title: "Recommendation"
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'flex',
-      gap: 8,
-      alignItems: 'center'
-    }
-  }, /*#__PURE__*/React.createElement(Icon, {
-    name: "checkCircle",
-    color: C.success,
-    size: 20
-  }), /*#__PURE__*/React.createElement("span", {
-    style: {
-      fontSize: 15,
-      fontWeight: 700
-    }
-  }, p.recommendation))), (p.photos || []).length > 0 && /*#__PURE__*/React.createElement(Sec, {
+  })), React.createElement(Sec, { title: 'Map Pin' },
+    React.createElement(PinMap, { lat: p.lat, lng: p.lng, label: nm, exactPin: !!p.exact_pin })
+  ), React.createElement(Sec, { title: 'Verification' },
+    React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 } },
+      React.createElement('span', { style: { fontSize: 13, fontWeight: 600 } }, 'Result'),
+      p.verification_result ? React.createElement(VB, { r: p.verification_result }) : React.createElement('span', { style: { fontSize: 12, color: C.textMuted } }, 'Not yet recorded')
+    ),
+    p.verification_notes && React.createElement('p', { style: { fontSize: 13, marginBottom: 8 } }, p.verification_notes),
+    p.field_officer && React.createElement('div', { style: { fontSize: 12, color: C.textMuted, paddingTop: 8, borderTop: `1px solid ${C.border}` } }, 'Field Officer: ', React.createElement('span', { style: { color: C.text || '#1a1a1a', fontWeight: 600 } }, p.field_officer))
+  ), (p.photos || []).length > 0 && /*#__PURE__*/React.createElement(Sec, {
     title: "Photos"
   }, /*#__PURE__*/React.createElement("div", {
     style: {
@@ -3866,7 +3784,9 @@ function GrantDetail({
   }), /*#__PURE__*/React.createElement(IR, {
     label: "Physical Condition",
     value: g(gr, 'physical_condition', 'physicalCondition')
-  })), /*#__PURE__*/React.createElement(Sec, {
+  })), React.createElement(Sec, { title: 'Map Pin' },
+    React.createElement(PinMap, { lat: gr.lat, lng: gr.lng, label: g(gr, 'client_name', 'clientName'), exactPin: !!gr.exact_pin })
+  ), /*#__PURE__*/React.createElement(Sec, {
     title: "Presenting Problem (Section A)"
   }, SECTION_A_QUESTIONS.map(item => g(gr, item.key) && /*#__PURE__*/React.createElement("div", {
     key: item.key,
