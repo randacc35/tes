@@ -1,5 +1,5 @@
-// SSA SW v12 — 20260625T063500Z
-const CACHE = 'ssa-v12';
+// SSA SW v14 — 20260625T073000Z
+const CACHE = 'ssa-v14';
 const BASE = '/tes';
 
 const PRECACHE = [
@@ -10,6 +10,8 @@ const PRECACHE = [
   'https://unpkg.com/react@18/umd/react.production.min.js',
   'https://unpkg.com/react-dom@18/umd/react-dom.production.min.js',
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js',
+  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
+  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
 ];
 
 self.addEventListener('install', e => {
