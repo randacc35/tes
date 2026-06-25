@@ -1,5 +1,5 @@
-// SSA SW v10 — 20260625T054321Z
-const CACHE = 'ssa-v10';
+// SSA SW v12 — 20260625T063500Z
+const CACHE = 'ssa-v12';
 const BASE = '/tes';
 
 const PRECACHE = [
@@ -10,8 +10,6 @@ const PRECACHE = [
   'https://unpkg.com/react@18/umd/react.production.min.js',
   'https://unpkg.com/react-dom@18/umd/react-dom.production.min.js',
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js',
-  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
-  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
 ];
 
 self.addEventListener('install', e => {
@@ -25,7 +23,7 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE && k !== 'ssa-tiles').map(k => caches.delete(k))))
+      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -41,29 +39,6 @@ self.addEventListener('fetch', e => {
           headers: { 'Content-Type': 'application/json' }
         })
       )
-    );
-    return;
-  }
-
-  // Never cache Nominatim geocoding or OSRM routing
-  if (url.hostname.includes('nominatim.openstreetmap.org') || url.hostname.includes('router.project-osrm.org') || url.hostname.includes('locationiq.com')) {
-    e.respondWith(fetch(e.request).catch(() => new Response('{}', { headers: { 'Content-Type': 'application/json' } })));
-    return;
-  }
-
-  // Cache map tiles (OSM + Esri) with cache-first, network-update
-  const isMapTile = url.hostname.includes('tile.openstreetmap.org') || url.hostname.includes('arcgisonline.com');
-  if (isMapTile) {
-    e.respondWith(
-      caches.open('ssa-tiles').then(tileCache => {
-        return tileCache.match(e.request).then(cached => {
-          const network = fetch(e.request).then(resp => {
-            if (resp && resp.status === 200) tileCache.put(e.request, resp.clone());
-            return resp;
-          }).catch(() => cached);
-          return cached || network;
-        });
-      })
     );
     return;
   }
