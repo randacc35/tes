@@ -10,20 +10,17 @@
 <meta name="apple-mobile-web-app-title" content="SSA Companion"/>
 <title>SSA Companion</title>
 <link rel="manifest" href="manifest.json"/>
-<!-- DNS prefetch for all external origins -->
-<link rel="dns-prefetch" href="https://fonts.googleapis.com"/>
-<link rel="dns-prefetch" href="https://fonts.gstatic.com"/>
-<link rel="dns-prefetch" href="https://unpkg.com"/>
-<link rel="dns-prefetch" href="https://cdn.jsdelivr.net"/>
-<link rel="dns-prefetch" href="https://xgdmelrhfoeiudhiarfj.supabase.co"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<!-- Only load font weights actually used: 600+700 -->
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@600&family=Sora:wght@600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'"/>
-<noscript><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@600&family=Sora:wght@600;700&display=swap" rel="stylesheet"/></noscript>
-<!-- Leaflet CSS: non-blocking load -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" media="print" onload="this.media='all'"/>
-<noscript><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/></noscript>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Sora:wght@600;700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+.leaflet-container { font-family: 'DM Sans', sans-serif; }
+.case-popup .leaflet-popup-content-wrapper { border-radius: 10px; padding: 0; overflow: hidden; box-shadow: 0 4px 20px #0003; }
+.case-popup .leaflet-popup-content { margin: 0; }
+.nav-pulse { animation: navpulse 1.5s ease-in-out infinite; }
+@keyframes navpulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.6;transform:scale(0.9)} }
+</style>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body,#root{height:100%;width:100%}
@@ -35,11 +32,6 @@ input,textarea,select,button{font-family:'DM Sans',sans-serif}
 #root{min-height:100vh}
 .online-dot{width:7px;height:7px;border-radius:50%;display:inline-block}
 .sync-bar{position:fixed;top:0;left:0;right:0;color:#fff;font-size:12px;font-weight:600;text-align:center;padding:5px 12px;z-index:9999;display:flex;align-items:center;justify-content:center;gap:6px}
-.leaflet-container{font-family:'DM Sans',sans-serif}
-.case-popup .leaflet-popup-content-wrapper{border-radius:10px;padding:0;overflow:hidden;box-shadow:0 4px 20px #0003}
-.case-popup .leaflet-popup-content{margin:0}
-.nav-pulse{animation:navpulse 1.5s ease-in-out infinite}
-@keyframes navpulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(0.9)}}
 </style>
 </head>
 <body>
@@ -51,17 +43,11 @@ input,textarea,select,button{font-family:'DM Sans',sans-serif}
     <p style="font-family:'DM Sans',sans-serif;color:#6b7280;font-size:14px">Loading SSA Companion…</p>
   </div>
 </div>
-<!-- Preload critical scripts to start download as early as possible -->
-<link rel="preload" href="https://unpkg.com/react@18/umd/react.production.min.js" as="script" crossorigin/>
-<link rel="preload" href="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" as="script" crossorigin/>
-<!-- Scripts load in order but don't block HTML parsing -->
-<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin defer></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin defer></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js" defer></script>
-<!-- Leaflet only needed when Map tab is open; load with low priority -->
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-document.addEventListener('DOMContentLoaded', function() {
 const {
   useState,
   useReducer,
@@ -78,112 +64,18 @@ let _idb = null;
 function openDB() {
   return new Promise((res, rej) => {
     if (_idb) return res(_idb);
-    const r = indexedDB.open('ssa_offline', 3); // v3: adds drafts + visits
-    r.onupgradeneeded = e => {
-      const db = e.target.result;
-      if (!db.objectStoreNames.contains('queue'))
-        db.createObjectStore('queue', { keyPath: 'id', autoIncrement: true });
-      // Draft store: auto-saves form state, keyed by formKey e.g. 'path_new'
-      if (!db.objectStoreNames.contains('drafts'))
-        db.createObjectStore('drafts', { keyPath: 'formKey' });
-      // Visit log store: one entry per field visit, indexed by caseId
-      if (!db.objectStoreNames.contains('visits')) {
-        const vs = db.createObjectStore('visits', { keyPath: 'id', autoIncrement: true });
-        vs.createIndex('caseId', 'caseId', { unique: false });
-      }
+    const r = indexedDB.open('ssa_offline', 1);
+    r.onupgradeneeded = e => e.target.result.createObjectStore('queue', {
+      keyPath: 'id',
+      autoIncrement: true
+    });
+    r.onsuccess = e => {
+      _idb = e.target.result;
+      res(_idb);
     };
-    r.onsuccess = e => { _idb = e.target.result; res(_idb); };
     r.onerror = () => rej(r.error);
   });
 }
-
-// -- DRAFT helpers ---------------------------------------------------------
-async function saveDraft(formKey, data) {
-  const db = await openDB();
-  return new Promise((res, rej) => {
-    const tx = db.transaction('drafts', 'readwrite');
-    tx.objectStore('drafts').put({ formKey, data, savedAt: Date.now() });
-    tx.oncomplete = res; tx.onerror = () => rej(tx.error);
-  });
-}
-async function loadDraft(formKey) {
-  const db = await openDB();
-  return new Promise((res, rej) => {
-    const tx = db.transaction('drafts', 'readonly');
-    const r = tx.objectStore('drafts').get(formKey);
-    r.onsuccess = () => res(r.result || null);
-    r.onerror = () => rej(r.error);
-  });
-}
-async function deleteDraft(formKey) {
-  const db = await openDB();
-  return new Promise((res, rej) => {
-    const tx = db.transaction('drafts', 'readwrite');
-    tx.objectStore('drafts').delete(formKey);
-    tx.oncomplete = res; tx.onerror = () => rej(tx.error);
-  });
-}
-
-// -- VISIT helpers ---------------------------------------------------------
-async function saveVisit(visit) {
-  const db = await openDB();
-  return new Promise((res, rej) => {
-    const tx = db.transaction('visits', 'readwrite');
-    if (visit.id) tx.objectStore('visits').put(visit);
-    else tx.objectStore('visits').add({ ...visit, createdAt: Date.now() });
-    tx.oncomplete = res; tx.onerror = () => rej(tx.error);
-  });
-}
-async function getVisits(caseId) {
-  const db = await openDB();
-  return new Promise((res, rej) => {
-    const tx = db.transaction('visits', 'readonly');
-    const idx = tx.objectStore('visits').index('caseId');
-    const r = idx.getAll(caseId);
-    r.onsuccess = () => res((r.result || []).sort((a, b) => b.createdAt - a.createdAt));
-    r.onerror = () => rej(r.error);
-  });
-}
-async function deleteVisit(id) {
-  const db = await openDB();
-  return new Promise((res, rej) => {
-    const tx = db.transaction('visits', 'readwrite');
-    tx.objectStore('visits').delete(id);
-    tx.oncomplete = res; tx.onerror = () => rej(tx.error);
-  });
-}
-
-// -- PHOTO COMPRESSION (Feature 55) ----------------------------------------
-// Compress any image to <= 200 KB before storing. Runs entirely on-device.
-const MAX_PHOTO_KB = 200;
-function compressPhoto(dataUrl) {
-  return new Promise(res => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      const MAX_DIM = 1280;
-      let { width: w, height: h } = img;
-      if (w > MAX_DIM || h > MAX_DIM) {
-        if (w > h) { h = Math.round(h * MAX_DIM / w); w = MAX_DIM; }
-        else { w = Math.round(w * MAX_DIM / h); h = MAX_DIM; }
-      }
-      canvas.width = w; canvas.height = h;
-      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-      let q = 0.82;
-      const tryCompress = () => {
-        const out = canvas.toDataURL('image/jpeg', q);
-        const kb = Math.round(out.length * 0.75 / 1024);
-        if (kb <= MAX_PHOTO_KB || q <= 0.3) return res(out);
-        q -= 0.1;
-        tryCompress();
-      };
-      tryCompress();
-    };
-    img.src = dataUrl;
-  });
-}
-
-
 async function enqueue(op) {
   const db = await openDB();
   return new Promise((res, rej) => {
@@ -215,87 +107,13 @@ async function clearQueue() {
   });
 }
 
-
-// -- Feature 62: Offline-safe auth token cache ----------------------------
-// Cache the session locally so an expired Supabase token while offline
-// never logs the officer out or blocks access to local data.
-const AUTH_CACHE_KEY = 'ssa_auth_session';
-function cacheSession(session) {
-  if (!session) return;
-  try {
-    localStorage.setItem(AUTH_CACHE_KEY, JSON.stringify({
-      user: session.user,
-      access_token: session.access_token,
-      expires_at: session.expires_at,
-      cachedAt: Date.now()
-    }));
-  } catch(e) {}
-}
-function getCachedSession() {
-  try {
-    const raw = localStorage.getItem(AUTH_CACHE_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch(e) { return null; }
-}
-function clearCachedSession() {
-  try { localStorage.removeItem(AUTH_CACHE_KEY); } catch(e) {}
-}
-
-// -- Feature 47: Storage quota monitor ------------------------------------
-// Returns { used, quota, pct } in MB. Returns null if API not supported.
-async function checkStorageQuota() {
-  if (!navigator.storage || !navigator.storage.estimate) return null;
-  try {
-    const { usage, quota } = await navigator.storage.estimate();
-    return {
-      usedMB: Math.round(usage / 1048576),
-      quotaMB: Math.round(quota / 1048576),
-      pct: Math.round((usage / quota) * 100)
-    };
-  } catch(e) { return null; }
-}
-
-
 // ── SUPABASE HELPERS ──────────────────────────────────────────────────────────
-// Per-table column whitelist. Strips any React state fields that have no DB
-// column yet, so Supabase never rejects an upsert with "unknown column" errors.
-// Once the SQL migration is run, the new columns appear here automatically.
-const TABLE_COLUMNS = {
-  ssa_clients: ['id','officer_id','name','dob','nis','trn','phone',
-    'address','parish','community','street','lot_number','lat','lng',
-    'directions','created_at','updated_at'],
-  ssa_path_cases: ['id','officer_id','client_id','client_name','case_type',
-    'status','residential_address','mailing_address',
-    'parish','community','street','lot_number','lat','lng',
-    'directions',
-    'visit_date','next_review','notes',
-    'payee_name','payee_trn','bank_name','account_number','dob','trn','nis',
-    'assigned_date','family_no','physical_condition','interview_notes',
-    'investigation_findings','recommended_amount','specific_reason',
-    'created_at','updated_at'],
-  ssa_grants: ['id','officer_id','client_id','client_name','grant_type',
-    'compassionate_subtype',
-    'status','address','parish','community','street','lot_number','lat','lng',
-    'directions','marital_status',
-    'purpose','amount','method','dob','trn','nis','phone','telephone',
-    'household_members','assets','notes','created_at','updated_at'],
-  ssa_deliveries: ['id','officer_id','post_office','post_office_community',
-    'lat','lng','delivery_date','batch_ref','cheque_count',
-    'receipt_details','notes','status','created_at','updated_at'],
-  ssa_post_offices: ['id','officer_id','name','community','lat','lng',
-    'created_at','updated_at'],
-};
-
-function sanitiseRow(table, row) {
-  const allowed = TABLE_COLUMNS[table];
-  if (!allowed) return row;
-  const clean = {};
-  for (const key of allowed) { if (key in row) clean[key] = row[key]; }
-  return clean;
-}
-
 async function sbUpsert(table, row) {
-  const { error } = await sb.from(table).upsert(sanitiseRow(table, row), { onConflict: 'id' });
+  const {
+    error
+  } = await sb.from(table).upsert(row, {
+    onConflict: 'id'
+  });
   if (error) throw error;
 }
 async function sbDelete(table, id) {
@@ -304,25 +122,14 @@ async function sbDelete(table, id) {
   } = await sb.from(table).delete().eq('id', id);
   if (error) throw error;
 }
-async function sbSelect(table, officerId, cols) {
-  // Try targeted columns first; if any don't exist yet (code 42703)
-  // fall back to select('*') so the app keeps working before migration runs.
-  const { data, error } = await sb.from(table)
-    .select(cols || '*')
-    .eq('officer_id', officerId)
-    .order('created_at', { ascending: false });
-  if (error) {
-    if (error.code === '42703' && cols) {
-      console.warn('[sbSelect] unknown column in ' + table + ' -- falling back to select(*). Run the SQL migration. ' + error.message);
-      const { data: d2, error: e2 } = await sb.from(table)
-        .select('*')
-        .eq('officer_id', officerId)
-        .order('created_at', { ascending: false });
-      if (e2) throw e2;
-      return d2 || [];
-    }
-    throw error;
-  }
+async function sbSelect(table, officerId) {
+  const {
+    data,
+    error
+  } = await sb.from(table).select('*').eq('officer_id', officerId).order('created_at', {
+    ascending: false
+  });
+  if (error) throw error;
   return data || [];
 }
 async function sbGetProfile(officerId) {
@@ -369,23 +176,11 @@ function profileFromRow(row) {
 async function flushQueue() {
   const ops = await dequeueAll();
   if (!ops.length) return 0;
-  const failed = [];
   for (const op of ops) {
-    try {
-      if (op.action === 'upsert') await sbUpsert(op.table, op.row);
-      else if (op.action === 'delete') await sbDelete(op.table, op.id);
-      else if (op.action === 'profile_upsert') await sbSaveProfile(op.officerId, op.profile);
-    } catch(e) {
-      // Track retry count; discard after 5 attempts to stop infinite loops
-      const retries = (op._retries || 0) + 1;
-      if (retries < 5) failed.push({ ...op, _retries: retries });
-      else console.warn('Dropping op after 5 retries:', op.table, op.action, e);
-    }
+    if (op.action === 'upsert') await sbUpsert(op.table, op.row);else if (op.action === 'delete') await sbDelete(op.table, op.id);else if (op.action === 'profile_upsert') await sbSaveProfile(op.officerId, op.profile);
   }
   await clearQueue();
-  // Re-enqueue only the ops that failed and haven't hit the retry limit
-  for (const op of failed) await enqueue(op);
-  return ops.length - failed.length;
+  return ops.length;
 }
 
 // ── COLOURS ───────────────────────────────────────────────────────────────────
@@ -865,15 +660,11 @@ function reducer(state, action) {
         deliveries: action.deliveries,
         postOffices: action.pos
       };
-      // Batch LS writes in idle time to avoid blocking the main thread
-      const _d = action;
-      (window.requestIdleCallback || (cb => setTimeout(cb, 50)))(() => {
-        LS.set('ssa_clients', _d.clients);
-        LS.set('ssa_path', _d.path);
-        LS.set('ssa_grants', _d.grants);
-        LS.set('ssa_deliveries', _d.deliveries);
-        LS.set('ssa_postoffices', _d.pos);
-      });
+      LS.set('ssa_clients', action.clients);
+      LS.set('ssa_path', action.path);
+      LS.set('ssa_grants', action.grants);
+      LS.set('ssa_deliveries', action.deliveries);
+      LS.set('ssa_postoffices', action.pos);
       break;
     case 'ADD_CLIENT':
       {
@@ -1313,441 +1104,275 @@ const VfySelect = ({
   options: ['Confirmed True', 'Discrepancy Found', 'Could Not Verify'],
   placeholder: "— select —"
 });
-
-const Sec = ({ title, children }) => /*#__PURE__*/React.createElement(Card, {
-  style: { marginBottom: 20 }
-}, /*#__PURE__*/React.createElement("div", {
-  style: { fontWeight: 700, fontSize: 13, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }
-}, title), children);
-
-const BackBtn = ({ onClick }) => /*#__PURE__*/React.createElement("button", {
-  onClick: onClick,
-  style: { background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: C.primary, fontSize: 14, fontWeight: 600, padding: '4px 0' }
-}, /*#__PURE__*/React.createElement(Icon, { name: 'chevronLeft', size: 18, color: C.primary }), "Back");
-
-// -- ST. THOMAS LOCATION DATA ------------------------------------------------
-const ST_THOMAS_PARISH = 'St. Thomas';
-const ST_THOMAS_COMMUNITIES = {
-  'Morant Bay': { lat: 17.8820, lng: -76.4090, streets: ['Church Street','Queen Street','King Street','High Street','Gayle Street','West Street','East Street','Market Street','Fort Street','Harbour Street','Barracks Road','Bell Lane','Duck Street','Blythe Street'] },
-  'Yallahs': { lat: 17.8750, lng: -76.5640, streets: ['Main Road','Market Lane','Bay Road','School Road','Church Road','Back Road'] },
-  'Port Morant': { lat: 17.8910, lng: -76.3270, streets: ['Harbour Street','Main Street','Sea Road','Church Lane','School Lane'] },
-  'Lyssons': { lat: 17.8706, lng: -76.4850, streets: ['Main Road','Beach Road','Lyssons Drive'] },
-  'Seaforth': { lat: 17.9012, lng: -76.4631, streets: ['Main Road','School Road','Church Road','Back Road'] },
-  'Golden Grove': { lat: 17.9042, lng: -76.5093, streets: ['Main Road','Golden Grove Road','School Lane'] },
-  'Bull Bay': { lat: 17.9300, lng: -76.6680, streets: ['Main Road','Bull Bay Road','Sea View Drive','Church Road'] },
-  'Cedar Valley': { lat: 18.0001, lng: -76.5167, streets: ['Main Road','Valley Road'] },
-  'Bath': { lat: 18.0057, lng: -76.3715, streets: ['Main Street','Fountain Road','Bath Road','Church Street'] },
-  'Dalvey': { lat: 17.9300, lng: -76.3800, streets: ['Main Road','Dalvey Road'] },
-  'Duckenfield': { lat: 17.9200, lng: -76.3500, streets: ['Main Road','Factory Road'] },
-  'Manchioneal': { lat: 18.0450, lng: -76.2900, streets: ['Main Road','Sea Road','Back Road'] },
-  'Retreat': { lat: 17.9800, lng: -76.3600, streets: ['Main Road','Retreat Road'] },
-  'Albion': { lat: 17.9600, lng: -76.4200, streets: ['Main Road','Albion Road'] },
-  'White Horses': { lat: 17.8550, lng: -76.5000, streets: ['Main Road','White Horses Drive'] },
-  'Rozelle': { lat: 17.9100, lng: -76.4500, streets: ['Main Road','Rozelle Drive'] },
-  'Trinityville': { lat: 18.0200, lng: -76.4700, streets: ['Main Road','Trinity Road'] },
-  'Leith Hall': { lat: 17.9700, lng: -76.4900, streets: ['Main Road','Leith Hall Drive'] },
-  'Pamphret': { lat: 17.9500, lng: -76.3300, streets: ['Main Road','Pamphret Road'] },
-  'Wheelerfield': { lat: 17.9000, lng: -76.4000, streets: ['Main Road','Wheelerfield Drive'] },
-  'Prospect': { lat: 17.8800, lng: -76.4400, streets: ['Main Road','Prospect Drive'] },
-  'Sunning Hill': { lat: 17.9200, lng: -76.5100, streets: ['Main Road','Sunning Hill Drive'] },
-  'Cuna': { lat: 17.9900, lng: -76.3400, streets: ['Main Road'] },
-  'Stokes Hall': { lat: 17.9700, lng: -76.3200, streets: ['Main Road','Stokes Hall Road'] },
-  'Whitehall': { lat: 17.9012, lng: -76.4631, streets: ['Main Road','Whitehall Road'] },
-  'St. Thomas (Other)': { lat: 17.9300, lng: -76.4000, streets: ['Main Road'] }
-};
-const ST_THOMAS_POST_OFFICES = [
-  { name: 'Morant Bay Post Office', community: 'Morant Bay' },
-  { name: 'Yallahs Post Office', community: 'Yallahs' },
-  { name: 'Port Morant Post Office', community: 'Port Morant' },
-  { name: 'Bath Post Office', community: 'Bath' },
-  { name: 'Seaforth Post Office', community: 'Seaforth' },
-  { name: 'White Horses Post Office', community: 'White Horses' },
-  { name: 'Bull Bay Post Office', community: 'Bull Bay' },
-  { name: 'Manchioneal Post Office', community: 'Manchioneal' },
-];
-const COMPASSIONATE_SUBTYPES = ['Medical', 'Funeral', 'House Repair'];
-
-function resolveLatLng(community) {
-  const c = ST_THOMAS_COMMUNITIES[community];
-  return c ? { lat: c.lat, lng: c.lng } : null;
-}
-function lookupCommunity(address) {
-  if (!address) return null;
-  const norm = address.toLowerCase().trim();
-  for (const [name, data] of Object.entries(ST_THOMAS_COMMUNITIES)) {
-    if (norm.includes(name.toLowerCase())) return { lat: data.lat, lng: data.lng, display: name };
-  }
-  return null;
-}
-function LocationPicker({ value, onChange }) {
-  const parish = ST_THOMAS_PARISH;
-  const community = value.community || '';
-  const street = value.street || '';
-  const lot_number = value.lot_number || '';
-  const communityNames = Object.keys(ST_THOMAS_COMMUNITIES);
-  const streets = community && ST_THOMAS_COMMUNITIES[community] ? ST_THOMAS_COMMUNITIES[community].streets : [];
-  const update = (patch) => {
-    const next = { ...value, ...patch, parish };
-    if (patch.community !== undefined) {
-      const coords = resolveLatLng(patch.community);
-      next.lat = coords ? coords.lat : null;
-      next.lng = coords ? coords.lng : null;
-      next.street = '';
-    }
-    onChange(next);
-  };
-  return React.createElement(React.Fragment, null,
-    React.createElement(Field, { label: 'Parish' },
-      React.createElement('div', { style: { padding: '9px 12px', border: '1px solid ' + C.border, borderRadius: 8, fontSize: 14, background: '#f5f5f5', color: C.textMuted } },
-        parish, ' ', React.createElement('span', { style: { fontSize: 11 } }, '(fixed)'))
-    ),
-    React.createElement(Field, { label: 'Community', required: true },
-      React.createElement('select', {
-        value: community, onChange: e => update({ community: e.target.value }),
-        style: { width: '100%', padding: '9px 12px', border: '1px solid ' + C.border, borderRadius: 8, fontSize: 14, background: C.surface }
-      },
-        React.createElement('option', { value: '' }, '-- select community --'),
-        communityNames.map(n => React.createElement('option', { key: n, value: n }, n))
-      )
-    ),
-    community ? React.createElement(Field, { label: 'Street / Road', hint: 'Select from list or type a custom name' },
-      React.createElement('select', {
-        value: streets.includes(street) ? street : (street ? '__other__' : ''),
-        onChange: e => update({ street: e.target.value === '__other__' ? '' : e.target.value }),
-        style: { width: '100%', padding: '9px 12px', border: '1px solid ' + C.border, borderRadius: 8, fontSize: 14, background: C.surface }
-      },
-        React.createElement('option', { value: '' }, '-- select street --'),
-        streets.map(s => React.createElement('option', { key: s, value: s }, s)),
-        React.createElement('option', { value: '__other__' }, 'Other (type below)')
-      ),
-      (!streets.includes(street) && street !== '') &&
-        React.createElement('input', {
-          type: 'text', value: street,
-          onChange: e => update({ street: e.target.value }),
-          placeholder: 'Type street / road name',
-          style: { width: '100%', padding: '9px 12px', border: '1px solid ' + C.border, borderRadius: 8, fontSize: 14, background: C.surface, marginTop: 6 }
-        })
-    ) : null,
-    React.createElement(Field, { label: 'Lot / House Number', hint: 'e.g. Lot 5, House 12' },
-      React.createElement('input', {
-        type: 'text', value: lot_number,
-        onChange: e => update({ lot_number: e.target.value }),
-        placeholder: 'Lot 5',
-        style: { width: '100%', padding: '9px 12px', border: '1px solid ' + C.border, borderRadius: 8, fontSize: 14, background: C.surface }
-      })
-    ),
-    (value.lat && value.lng) ? React.createElement('div', {
-      style: { display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', background: C.primaryLight, borderRadius: 6, marginBottom: 14, fontSize: 12, color: C.primaryDark }
-    }, React.createElement(Icon, { name: 'mapPin', size: 13, color: C.primary }),
-      'Pin set: ' + community + (street && street !== '__other__' ? ', ' + street : '')
-    ) : (community ? React.createElement('div', { style: { fontSize: 12, color: C.warning, marginBottom: 14 } },
-      'Community not yet in index -- pin will need manual confirmation') : null)
-  );
-}
-
-
-// -- useDraftAutoSave (Feature 48) -----------------------------------------
-// Auto-saves form state to IDB every 30s. Restores on remount if a draft exists.
-// formKey: unique string e.g. 'path_new' or 'grant_abc123'
-// initialState: the blank/prefilled form object
-// Returns [formState, setFormState, draftAge, clearDraft]
-function useDraftAutoSave(formKey, initialState) {
-  const [f, setF] = useState(initialState);
-  const [draftAge, setDraftAge] = useState(null); // ms since draft was saved
-  const [draftLoaded, setDraftLoaded] = useState(false);
-  const fRef = useRef(f);
-  fRef.current = f;
-
-  // Load draft on mount
-  useEffect(() => {
-    loadDraft(formKey).then(draft => {
-      if (draft && draft.data) {
-        setF(draft.data);
-        setDraftAge(Date.now() - draft.savedAt);
-      }
-      setDraftLoaded(true);
-    }).catch(() => setDraftLoaded(true));
-  }, [formKey]);
-
-  // Auto-save every 30s after draft is loaded
-  useEffect(() => {
-    if (!draftLoaded) return;
-    const t = setInterval(() => {
-      saveDraft(formKey, fRef.current).catch(() => {});
-    }, 30000);
-    return () => clearInterval(t);
-  }, [formKey, draftLoaded]);
-
-  const clearDraft = () => {
-    deleteDraft(formKey).catch(() => {});
-    setDraftAge(null);
-  };
-
-  return [f, setF, draftAge, clearDraft];
-}
-
-// -- DraftBanner -----------------------------------------------------------
-// Shows a dismissible "Draft restored" banner when a draft was found.
-function DraftBanner({ draftAge, onDismiss, onDiscard }) {
-  if (!draftAge) return null;
-  const mins = Math.round(draftAge / 60000);
-  const label = mins < 2 ? 'just now' : mins < 60 ? mins + ' mins ago' : Math.round(mins/60) + 'h ago';
-  return React.createElement('div', {
-    style: {
-      background: '#FFF8E1', border: '1px solid #F9A825',
-      borderRadius: 8, padding: '8px 12px', marginBottom: 12,
-      display: 'flex', alignItems: 'center', gap: 8, fontSize: 12
-    }
-  },
-    React.createElement('span', { style: { flex: 1, color: '#5D4037' } },
-      '\u{1F4BE} Draft restored from ' + label + ' \u2014 unsaved changes recovered.'
-    ),
-    React.createElement('button', {
-      onClick: onDiscard,
-      style: { background: 'none', border: 'none', fontSize: 11, color: '#E65100', cursor: 'pointer', fontWeight: 600 }
-    }, 'Discard'),
-    React.createElement('button', {
-      onClick: onDismiss,
-      style: { background: 'none', border: 'none', fontSize: 16, color: '#795548', cursor: 'pointer', lineHeight: 1 }
-    }, '\u00d7')
-  );
-}
-
-// -- PhotoAttach (with compression, Feature 55) ----------------------------
-const PhotoAttach = ({ photos = [], onChange }) => {
+const PhotoAttach = ({
+  photos = [],
+  onChange
+}) => {
   const ref = useRef();
-  const [compressing, setCompressing] = useState(false);
-
-  const add = async e => {
-    const files = Array.from(e.target.files);
-    if (!files.length) return;
-    setCompressing(true);
-    const newPhotos = await Promise.all(files.map(async f => {
-      const raw = await new Promise(res => {
-        const r = new FileReader();
-        r.onload = ev => res(ev.target.result);
-        r.readAsDataURL(f);
-      });
-      const compressed = await compressPhoto(raw);
-      const kb = Math.round(compressed.length * 0.75 / 1024);
-      return { id: uid(), name: f.name, data: compressed, kb };
-    }));
-    setCompressing(false);
-    onChange([...photos, ...newPhotos]);
-    e.target.value = '';
-  };
-
-  return React.createElement('div', null,
-    React.createElement('input', {
-      ref, type: 'file', accept: 'image/*', multiple: true,
-      onChange: add, style: { display: 'none' }
-    }),
-    React.createElement(Btn, {
-      variant: 'ghost', size: 'sm',
-      onClick: () => ref.current.click(),
-      disabled: compressing
-    },
-      React.createElement(Icon, { name: 'camera', size: 15 }),
-      compressing ? ' Compressing\u2026' : ' Attach Photo'
-    ),
-    photos.length > 0 && React.createElement('div', {
-      style: { display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }
-    },
-      photos.map(ph => React.createElement('div', {
-        key: ph.id, style: { position: 'relative' }
-      },
-        React.createElement('img', {
-          src: ph.data, alt: ph.name,
-          style: { width: 72, height: 72, objectFit: 'cover', borderRadius: 8, border: `1px solid ${C.border}` }
-        }),
-        ph.kb && React.createElement('div', {
-          style: { position: 'absolute', bottom: 2, left: 2, fontSize: 9, background: 'rgba(0,0,0,0.55)', color: '#fff', borderRadius: 3, padding: '1px 3px' }
-        }, ph.kb + 'KB'),
-        React.createElement('button', {
-          onClick: () => onChange(photos.filter(p => p.id !== ph.id)),
-          style: {
-            position: 'absolute', top: -4, right: -4,
-            background: C.danger, border: 'none', borderRadius: '50%',
-            width: 18, height: 18, cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center'
-          }
-        }, React.createElement(Icon, { name: 'x', size: 10, color: '#fff' }))
-      ))
-    )
-  );
-};
-
-
-
-// -- Feature 47: StorageWarning component ---------------------------------
-function StorageWarning() {
-  const [quota, setQuota] = useState(null);
-  const [dismissed, setDismissed] = useState(false);
-
-  useEffect(() => {
-    checkStorageQuota().then(q => {
-      if (q && q.pct >= 75) setQuota(q);
-    });
-    // Re-check every 5 minutes
-    const t = setInterval(() => {
-      checkStorageQuota().then(q => { if (q && q.pct >= 75) setQuota(q); });
-    }, 300000);
-    return () => clearInterval(t);
-  }, []);
-
-  if (!quota || dismissed) return null;
-  const isHigh = quota.pct >= 90;
-
-  return React.createElement('div', {
-    style: {
-      background: isHigh ? '#FFEBEE' : '#FFF8E1',
-      border: '1px solid ' + (isHigh ? '#EF9A9A' : '#FFE082'),
-      borderRadius: 8, padding: '8px 12px', margin: '8px 16px 0',
-      display: 'flex', alignItems: 'center', gap: 8, fontSize: 12
-    }
-  },
-    React.createElement('span', { style: { fontSize: 16 } }, isHigh ? '\u{1F6A8}' : '\u{1F4BE}'),
-    React.createElement('div', { style: { flex: 1 } },
-      React.createElement('div', { style: { fontWeight: 600, color: isHigh ? '#C62828' : '#5D4037' } },
-        isHigh ? 'Storage almost full!' : 'Storage getting low'
-      ),
-      React.createElement('div', { style: { color: isHigh ? '#B71C1C' : '#795548', marginTop: 1 } },
-        quota.usedMB + 'MB used of ' + quota.quotaMB + 'MB (' + quota.pct + '%). Sync and clear map tiles to free space.'
-      )
-    ),
-    React.createElement('button', {
-      onClick: () => setDismissed(true),
-      style: { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#9E9E9E', lineHeight: 1 }
-    }, '\u00d7')
-  );
-}
-
-// -- Feature 1: VisitLog component ----------------------------------------
-// Displays and logs field visits for a PATH case or grant.
-// Visits are stored in IDB and sync to Supabase via the queue.
-function VisitLog({ caseId, caseType, officerName, dispatch }) {
-  const [visits, setVisits] = useState([]);
-  const [adding, setAdding] = useState(false);
-  const [form, setForm] = useState({
-    date: new Date().toISOString().slice(0, 10),
-    persons_present: '',
-    purpose: 'Home Visit',
-    home_condition: '',
-    notes: '',
-    photos: []
+  const add = e => Array.from(e.target.files).forEach(f => {
+    const r = new FileReader();
+    r.onload = ev => onChange([...photos, {
+      id: uid(),
+      name: f.name,
+      data: ev.target.result
+    }]);
+    r.readAsDataURL(f);
   });
-  const [saving, setSaving] = useState(false);
-
-  const purposes = ['Home Visit', 'Follow-up Visit', 'Verification Visit', 'Delivery', 'Community Outreach', 'Other'];
-
-  useEffect(() => {
-    if (!caseId) return;
-    getVisits(caseId).then(setVisits).catch(() => {});
-  }, [caseId]);
-
-  const submitVisit = async () => {
-    setSaving(true);
-    const visit = {
-      ...form,
-      caseId,
-      caseType,
-      officer: officerName,
-      id: undefined // let IDB auto-increment
-    };
-    try {
-      await saveVisit(visit);
-      const updated = await getVisits(caseId);
-      setVisits(updated);
-      setAdding(false);
-      setForm({ date: new Date().toISOString().slice(0, 10), persons_present: '', purpose: 'Home Visit', home_condition: '', notes: '', photos: [] });
-    } catch(e) {
-      alert('Could not save visit: ' + e.message);
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("input", {
+    ref: ref,
+    type: "file",
+    accept: "image/*",
+    multiple: true,
+    onChange: add,
+    style: {
+      display: 'none'
     }
-    setSaving(false);
+  }), /*#__PURE__*/React.createElement(Btn, {
+    variant: "ghost",
+    size: "sm",
+    onClick: () => ref.current.click()
+  }, /*#__PURE__*/React.createElement(Icon, {
+    name: "camera",
+    size: 15
+  }), " Attach Photo"), photos.length > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      flexWrap: 'wrap',
+      gap: 8,
+      marginTop: 10
+    }
+  }, photos.map(ph => /*#__PURE__*/React.createElement("div", {
+    key: ph.id,
+    style: {
+      position: 'relative'
+    }
+  }, /*#__PURE__*/React.createElement("img", {
+    src: ph.data,
+    alt: ph.name,
+    style: {
+      width: 72,
+      height: 72,
+      objectFit: 'cover',
+      borderRadius: 8,
+      border: `1px solid ${C.border}`
+    }
+  }), /*#__PURE__*/React.createElement("button", {
+    onClick: () => onChange(photos.filter(p => p.id !== ph.id)),
+    style: {
+      position: 'absolute',
+      top: -4,
+      right: -4,
+      background: C.danger,
+      border: 'none',
+      borderRadius: '50%',
+      width: 18,
+      height: 18,
+      cursor: 'pointer',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center'
+    }
+  }, /*#__PURE__*/React.createElement(Icon, {
+    name: "x",
+    size: 10,
+    color: "#fff"
+  }))))));
+};
+const Sec = ({
+  title,
+  children
+}) => /*#__PURE__*/React.createElement(Card, {
+  style: {
+    marginBottom: 14
+  }
+}, /*#__PURE__*/React.createElement("h4", {
+  style: {
+    fontSize: 12,
+    color: C.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: '.5px',
+    marginBottom: 10
+  }
+}, title), children);
+const IR = ({
+  label,
+  value
+}) => value ? /*#__PURE__*/React.createElement("div", {
+  style: {
+    marginBottom: 8
+  }
+}, /*#__PURE__*/React.createElement("span", {
+  style: {
+    fontSize: 11,
+    color: C.textMuted
+  }
+}, label, ": "), /*#__PURE__*/React.createElement("span", {
+  style: {
+    fontSize: 13
+  }
+}, value)) : null;
+const VB = ({
+  r
+}) => /*#__PURE__*/React.createElement(Badge, {
+  label: r,
+  color: r === 'Confirmed True' ? C.success : r === 'Discrepancy Found' ? C.danger : C.warning
+});
+const BackBtn = ({
+  onClick
+}) => /*#__PURE__*/React.createElement("button", {
+  onClick: onClick,
+  style: {
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    padding: 4,
+    display: 'flex',
+    alignItems: 'center'
+  }
+}, /*#__PURE__*/React.createElement(Icon, {
+  name: "chevronLeft",
+  size: 22,
+  color: C.primary
+}));
+
+// ── SYNC HOOK ─────────────────────────────────────────────────────────────────
+function useSync(state, dispatch) {
+  const oid = state.authUser?.id;
+  const writeOp = useCallback(async (action, table, row, id) => {
+    const online = navigator.onLine;
+    if (action === 'upsert') {
+      const fullRow = {
+        ...row,
+        officer_id: oid,
+        updated_at: new Date().toISOString()
+      };
+      if (online) {
+        try {
+          await sbUpsert(table, fullRow);
+          return;
+        } catch (e) {
+          console.warn('write failed, queuing', e);
+        }
+      }
+      await enqueue({
+        action: 'upsert',
+        table,
+        row: fullRow
+      });
+    } else {
+      if (online) {
+        try {
+          await sbDelete(table, id);
+          return;
+        } catch (e) {
+          console.warn('delete failed, queuing', e);
+        }
+      }
+      await enqueue({
+        action: 'delete',
+        table,
+        id
+      });
+    }
+    const q = await dequeueAll();
+    dispatch({
+      type: 'SET_PENDING',
+      p: q.length
+    });
+  }, [oid]);
+  const pull = useCallback(async () => {
+    if (!navigator.onLine || !oid) return;
+    const [clients, path, grants, deliveries, pos] = await Promise.all([sbSelect('ssa_clients', oid), sbSelect('ssa_path_cases', oid), sbSelect('ssa_grants', oid), sbSelect('ssa_deliveries', oid), sbSelect('ssa_post_offices', oid)]);
+    dispatch({
+      type: 'LOAD_ALL',
+      clients,
+      path,
+      grants,
+      deliveries,
+      pos
+    });
+  }, [oid]);
+  const syncNow = useCallback(async () => {
+    if (!navigator.onLine) return;
+    dispatch({
+      type: 'SET_SYNCING',
+      p: true
+    });
+    try {
+      await flushQueue();
+      dispatch({
+        type: 'SET_PENDING',
+        p: 0
+      });
+      await pull();
+    } catch (e) {
+      console.warn('sync err', e);
+    }
+    dispatch({
+      type: 'SET_SYNCING',
+      p: false
+    });
+  }, [pull]);
+  useEffect(() => {
+    const up = () => {
+      dispatch({
+        type: 'SET_ONLINE',
+        p: true
+      });
+      syncNow();
+    };
+    const dn = () => dispatch({
+      type: 'SET_ONLINE',
+      p: false
+    });
+    window.addEventListener('online', up);
+    window.addEventListener('offline', dn);
+    return () => {
+      window.removeEventListener('online', up);
+      window.removeEventListener('offline', dn);
+    };
+  }, [syncNow]);
+  useEffect(() => {
+    if (oid) pull();
+  }, [oid]);
+  useEffect(() => {
+    dequeueAll().then(q => dispatch({
+      type: 'SET_PENDING',
+      p: q.length
+    }));
+  }, []);
+  return {
+    writeOp,
+    syncNow
   };
-
-  const removeVisit = async id => {
-    if (!window.confirm('Delete this visit record?')) return;
-    await deleteVisit(id);
-    setVisits(visits.filter(v => v.id !== id));
-  };
-
-  return React.createElement('div', { style: { marginTop: 8 } },
-    React.createElement('div', {
-      style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }
-    },
-      React.createElement('h4', { style: { fontSize: 14, fontWeight: 700, color: C.primaryDark } },
-        'Field Visits (' + visits.length + ')'
-      ),
-      React.createElement(Btn, {
-        size: 'sm', onClick: () => setAdding(a => !a)
-      }, adding ? 'Cancel' : '+ Log Visit')
-    ),
-
-    // Add visit form
-    adding && React.createElement('div', {
-      style: { background: C.primaryLight, borderRadius: 10, padding: 14, marginBottom: 12, border: '1px solid ' + C.primary + '33' }
-    },
-      React.createElement('div', { style: { fontSize: 13, fontWeight: 700, color: C.primaryDark, marginBottom: 10 } }, 'New Visit Record'),
-      React.createElement(Field, { label: 'Visit Date' },
-        React.createElement(Inp, { type: 'date', value: form.date, onChange: v => setForm(p => ({ ...p, date: v })) })
-      ),
-      React.createElement(Field, { label: 'Purpose' },
-        React.createElement(Sel, { value: form.purpose, onChange: v => setForm(p => ({ ...p, purpose: v })), options: purposes })
-      ),
-      React.createElement(Field, { label: 'Persons Present', hint: 'Who was home during the visit' },
-        React.createElement(Inp, { value: form.persons_present, onChange: v => setForm(p => ({ ...p, persons_present: v })), placeholder: 'e.g. Applicant, spouse, 2 children' })
-      ),
-      React.createElement(Field, { label: 'Home Condition', hint: 'Brief physical description of property and living conditions' },
-        React.createElement(Txt, { value: form.home_condition, onChange: v => setForm(p => ({ ...p, home_condition: v })), rows: 3, placeholder: 'e.g. Small wooden structure, roof in poor condition...' })
-      ),
-      React.createElement(Field, { label: 'Visit Notes' },
-        React.createElement(Txt, { value: form.notes, onChange: v => setForm(p => ({ ...p, notes: v })), rows: 3, placeholder: 'Observations, concerns, follow-up needed...' })
-      ),
-      React.createElement(Field, { label: 'Photos' },
-        React.createElement(PhotoAttach, { photos: form.photos, onChange: v => setForm(p => ({ ...p, photos: v })) })
-      ),
-      React.createElement(Btn, {
-        onClick: submitVisit,
-        disabled: saving || !form.date,
-        style: { width: '100%', justifyContent: 'center', marginTop: 4 }
-      }, saving ? 'Saving\u2026' : 'Save Visit Record')
-    ),
-
-    // Visit list
-    visits.length === 0 && !adding && React.createElement('p', {
-      style: { fontSize: 12, color: C.textMuted, textAlign: 'center', padding: '12px 0' }
-    }, 'No visits logged yet. Tap "+ Log Visit" after each home visit.'),
-
-    visits.map(v => React.createElement('div', {
-      key: v.id,
-      style: { background: C.surface, border: '1px solid ' + C.border, borderRadius: 10, padding: 12, marginBottom: 8 }
-    },
-      React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 } },
-        React.createElement('div', null,
-          React.createElement('div', { style: { fontSize: 13, fontWeight: 700, color: C.primaryDark } }, v.purpose),
-          React.createElement('div', { style: { fontSize: 11, color: C.textMuted } },
-            fmtDate(v.date) + (v.officer ? ' \u00b7 ' + v.officer : '') +
-            (v.persons_present ? ' \u00b7 ' + v.persons_present : '')
-          )
-        ),
-        React.createElement('button', {
-          onClick: () => removeVisit(v.id),
-          style: { background: 'none', border: 'none', cursor: 'pointer', color: C.textMuted, fontSize: 16, lineHeight: 1 }
-        }, '\u00d7')
-      ),
-      v.home_condition && React.createElement('p', { style: { fontSize: 12, color: C.primaryDark, marginBottom: 4, fontStyle: 'italic' } }, v.home_condition),
-      v.notes && React.createElement('p', { style: { fontSize: 12, color: C.textMuted } }, v.notes),
-      v.photos && v.photos.length > 0 && React.createElement('div', {
-        style: { display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }
-      }, v.photos.map(ph => React.createElement('img', {
-        key: ph.id, src: ph.data, alt: ph.name,
-        style: { width: 56, height: 56, objectFit: 'cover', borderRadius: 6, border: '1px solid ' + C.border }
-      })))
-    ))
-  );
 }
 
+// ── SYNC DISPATCH ──────────────────────────────────────────────────────────────
+function useSyncDispatch(dispatch, writeOp) {
+  return useCallback(action => {
+    dispatch(action);
+    const TABLE_MAP = {
+      ADD_CLIENT: ['upsert', 'ssa_clients'],
+      UPD_CLIENT: ['upsert', 'ssa_clients'],
+      DEL_CLIENT: ['delete', 'ssa_clients'],
+      ADD_PATH: ['upsert', 'ssa_path_cases'],
+      UPD_PATH: ['upsert', 'ssa_path_cases'],
+      DEL_PATH: ['delete', 'ssa_path_cases'],
+      ADD_GRANT: ['upsert', 'ssa_grants'],
+      UPD_GRANT: ['upsert', 'ssa_grants'],
+      DEL_GRANT: ['delete', 'ssa_grants'],
+      ADD_DEL: ['upsert', 'ssa_deliveries'],
+      UPD_DEL: ['upsert', 'ssa_deliveries'],
+      DEL_DEL: ['delete', 'ssa_deliveries'],
+      ADD_PO: ['upsert', 'ssa_post_offices'],
+      DEL_PO: ['delete', 'ssa_post_offices']
+    };
+    const m = TABLE_MAP[action.type];
+    if (!m) return;
+    const [op, table] = m;
+    if (op === 'upsert') writeOp('upsert', table, action.p);else writeOp('delete', table, null, action.p);
+  }, [dispatch, writeOp]);
+}
 
 // ── SYNC BAR ──────────────────────────────────────────────────────────────────
 const SyncBar = ({
@@ -2163,19 +1788,219 @@ function ProfileSetup({
 
 // ── CONSTANTS ─────────────────────────────────────────────────────────────────
 const VF = ['Name', 'Address', 'Household Members', 'Employment', 'Income', 'Housing Conditions'];
-const GRANT_TYPES = ['Compassionate', 'Medical', 'Funeral', 'House Repair', 'Rehabilitation', 'Business', 'Emergency', 'Education & Social Intervention'];
+const GRANT_TYPES = ['Rehabilitation/Business', 'Compassionate House Repair', 'Medical', 'Funeral', 'Emergency', 'Education & Social Intervention', 'Addition', 'Appeals'];
 const GRANT_METHOD = {
-  'Compassionate': 'Office interview + home visit',
+  'Rehabilitation/Business': 'Office interview + home visit',
+  'Compassionate House Repair': 'Home visit',
   'Medical': 'Office interview + possible home visit',
   'Funeral': 'Office interview only',
-  'House Repair': 'Home visit only',
-  'Rehabilitation': 'Office interview + home visit',
-  'Business': 'Office interview + home visit',
   'Emergency': 'Office processing — urgent',
-  'Education & Social Intervention': 'Office interview only'
+  'Education & Social Intervention': 'Office interview only',
+  'Addition': 'Office interview + home visit',
+  'Appeals': 'Office interview + home visit'
 };
-const ASSETS = ['Laptop/Computer', 'Desktop Computer', 'Tablet', 'Car/Motor Vehicle', 'Motorbike', 'TV', 'Refrigerator', 'Freezer', 'Washing Machine', 'Microwave', 'Stove', 'Air Conditioner', 'DVD Player', 'Stereo System', 'Cable TV', 'Internet Connection', 'Land Phone', 'Cell Phone', 'Generator', 'Farm Animal'];
+// Maps each grant type to its lettered section in the committee report template,
+// for display only (used in GrantForm header so it's clear which template section
+// the questions on screen correspond to).
+const GRANT_SECTION_LABEL = {
+  'Rehabilitation/Business': 'Section B — Rehabilitation Grant',
+  'Compassionate House Repair': 'Section C — Compassionate House Repairs',
+  'Medical': 'Section D — Medical Assistance',
+  'Funeral': 'Section E — Funeral Assistance',
+  'Emergency': 'Section F — Emergency Grant',
+  'Education & Social Intervention': 'E.S.I. Grant (separate template)',
+  'Addition': 'Section H — Addition',
+  'Appeals': 'Section I — Appeals'
+};
 
+// ── ST. THOMAS LOCATION DATA ──────────────────────────────────────────────────
+// Parish is fixed: St. Thomas. Communities with coords + common streets/areas.
+const ST_THOMAS_PARISH = 'St. Thomas';
+
+const ST_THOMAS_COMMUNITIES = {
+  'Morant Bay': { lat: 17.8820, lng: -76.4090, streets: ['Church Street', 'Queen Street', 'King Street', 'High Street', 'Gayle Street', 'West Street', 'East Street', 'Market Street', 'Fort Street', 'Harbour Street', 'Barracks Road', 'Bell Lane', 'Duck Street', 'Blythe Street'] },
+  'Yallahs': { lat: 17.8750, lng: -76.5640, streets: ['Main Road', 'Market Lane', 'Bay Road', 'School Road', 'Church Road', 'Back Road'] },
+  'Port Morant': { lat: 17.8910, lng: -76.3270, streets: ['Harbour Street', 'Main Street', 'Sea Road', 'Church Lane', 'School Lane'] },
+  'Lyssons': { lat: 17.8706, lng: -76.4850, streets: ['Main Road', 'Beach Road', 'Lyssons Drive'] },
+  'Seaforth': { lat: 17.9012, lng: -76.4631, streets: ['Main Road', 'School Road', 'Church Road', 'Back Road'] },
+  'Golden Grove': { lat: 17.9042, lng: -76.5093, streets: ['Main Road', 'Golden Grove Road', 'School Lane'] },
+  'Bull Bay': { lat: 17.9300, lng: -76.6680, streets: ['Main Road', 'Bull Bay Road', 'Sea View Drive', 'Church Road'] },
+  'Cedar Valley': { lat: 18.0001, lng: -76.5167, streets: ['Main Road', 'Valley Road'] },
+  'Bath': { lat: 18.0057, lng: -76.3715, streets: ['Main Street', 'Fountain Road', 'Bath Road', 'Church Street'] },
+  'Dalvey': { lat: 17.9300, lng: -76.3800, streets: ['Main Road', 'Dalvey Road'] },
+  'Duckenfield': { lat: 17.9200, lng: -76.3500, streets: ['Main Road', 'Factory Road'] },
+  'Manchioneal': { lat: 18.0450, lng: -76.2900, streets: ['Main Road', 'Sea Road', 'Back Road'] },
+  'Retreat': { lat: 17.9800, lng: -76.3600, streets: ['Main Road', 'Retreat Road'] },
+  'Albion': { lat: 17.9600, lng: -76.4200, streets: ['Main Road', 'Albion Road'] },
+  'White Horses': { lat: 17.8550, lng: -76.5000, streets: ['Main Road', 'White Horses Drive'] },
+  'Rozelle': { lat: 17.9100, lng: -76.4500, streets: ['Main Road', 'Rozelle Drive'] },
+  'Trinityville': { lat: 18.0200, lng: -76.4700, streets: ['Main Road', 'Trinity Road'] },
+  'Leith Hall': { lat: 17.9700, lng: -76.4900, streets: ['Main Road', 'Leith Hall Drive'] },
+  'Pamphret': { lat: 17.9500, lng: -76.3300, streets: ['Main Road', 'Pamphret Road'] },
+  'Wheelerfield': { lat: 17.9000, lng: -76.4000, streets: ['Main Road', 'Wheelerfield Drive'] },
+  'Prospect': { lat: 17.8800, lng: -76.4400, streets: ['Main Road', 'Prospect Drive'] },
+  'Sunning Hill': { lat: 17.9200, lng: -76.5100, streets: ['Main Road', 'Sunning Hill Drive'] },
+  'Cuna': { lat: 17.9900, lng: -76.3400, streets: ['Main Road'] },
+  'Stokes Hall': { lat: 17.9700, lng: -76.3200, streets: ['Main Road', 'Stokes Hall Road'] },
+  'St. Thomas (Other)': { lat: 17.9300, lng: -76.4000, streets: ['Main Road'] }
+};
+
+const ST_THOMAS_POST_OFFICES = [
+  { name: 'Morant Bay Post Office', community: 'Morant Bay' },
+  { name: 'Yallahs Post Office', community: 'Yallahs' },
+  { name: 'Port Morant Post Office', community: 'Port Morant' },
+  { name: 'Bath Post Office', community: 'Bath' },
+  { name: 'Seaforth Post Office', community: 'Seaforth' },
+  { name: 'White Horses Post Office', community: 'White Horses' },
+  { name: 'Bull Bay Post Office', community: 'Bull Bay' },
+  { name: 'Manchioneal Post Office', community: 'Manchioneal' },
+];
+
+// Resolve lat/lng from community name (exact match)
+function resolveLatLng(community) {
+  const c = ST_THOMAS_COMMUNITIES[community];
+  return c ? { lat: c.lat, lng: c.lng } : null;
+}
+
+// Fuzzy community lookup — used by the map geocoding effect
+function lookupCommunity(address) {
+  if (!address) return null;
+  const norm = address.toLowerCase().trim();
+  // Exact community name match first
+  for (const [name, data] of Object.entries(ST_THOMAS_COMMUNITIES)) {
+    if (norm.includes(name.toLowerCase())) {
+      return { lat: data.lat, lng: data.lng, display: name };
+    }
+  }
+  return null;
+}
+
+// ── LOCATION PICKER COMPONENT ─────────────────────────────────────────────────
+// Renders parish (locked), community dropdown, street/area text, lot number.
+// Calls onChange({ parish, community, street, lot_number, lat, lng }) on every change.
+function LocationPicker({ value, onChange }) {
+  const parish = ST_THOMAS_PARISH;
+  const community = value.community || '';
+  const street = value.street || '';
+  const lot_number = value.lot_number || '';
+  const communityNames = Object.keys(ST_THOMAS_COMMUNITIES);
+  const streets = community && ST_THOMAS_COMMUNITIES[community] ? ST_THOMAS_COMMUNITIES[community].streets : [];
+  const [gpsState, setGpsState] = useState('idle'); // idle | locating | error
+  const [gpsError, setGpsError] = useState('');
+
+  const update = (patch) => {
+    const next = { ...value, ...patch, parish };
+    // Resolve coords from community centroid ONLY if no exact GPS pin has been set yet.
+    // Once exact_pin is true, picking a community/street is just descriptive text —
+    // it must never silently overwrite a real GPS fix with an approximate centroid.
+    if (patch.community !== undefined && !value.exact_pin) {
+      const coords = resolveLatLng(patch.community);
+      next.lat = coords ? coords.lat : null;
+      next.lng = coords ? coords.lng : null;
+      next.street = ''; // reset street when community changes
+    } else if (patch.community !== undefined) {
+      next.street = '';
+    }
+    onChange(next);
+  };
+
+  const useMyLocation = () => {
+    if (!navigator.geolocation) {
+      setGpsState('error');
+      setGpsError('GPS is not available on this device/browser.');
+      return;
+    }
+    setGpsState('locating');
+    setGpsError('');
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        const { latitude, longitude, accuracy } = pos.coords;
+        setGpsState('idle');
+        onChange({ ...value, parish, lat: latitude, lng: longitude, gps_accuracy: Math.round(accuracy), exact_pin: true });
+      },
+      err => {
+        setGpsState('error');
+        setGpsError(
+          err.code === 1 ? 'Location permission denied. Enable location access for this site and try again.' :
+          err.code === 2 ? 'Could not get a GPS fix — move to an open area and try again.' :
+          'Timed out getting your location — try again.'
+        );
+      },
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+    );
+  };
+
+  return React.createElement(React.Fragment, null,
+    React.createElement(Field, { label: 'Parish' },
+      React.createElement('div', {
+        style: { padding: '9px 12px', border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 14, background: '#f5f5f5', color: C.textMuted }
+      }, parish, ' ', React.createElement('span', { style: { fontSize: 11 } }, '(fixed)'))
+    ),
+    React.createElement(Field, { label: 'Community', required: true },
+      React.createElement('select', {
+        value: community,
+        onChange: e => update({ community: e.target.value }),
+        style: { width: '100%', padding: '9px 12px', border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 14, background: C.surface }
+      },
+        React.createElement('option', { value: '' }, '— select community —'),
+        communityNames.map(n => React.createElement('option', { key: n, value: n }, n))
+      )
+    ),
+    community ? React.createElement(Field, { label: 'Street / Road', hint: 'Select from list or type a custom street name' },
+      React.createElement('select', {
+        value: street,
+        onChange: e => update({ street: e.target.value }),
+        style: { width: '100%', padding: '9px 12px', border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 14, background: C.surface }
+      },
+        React.createElement('option', { value: '' }, '— select street —'),
+        streets.map(s => React.createElement('option', { key: s, value: s }, s)),
+        React.createElement('option', { value: '__other__' }, 'Other (type below)')
+      ),
+      (street === '__other__' || (street && !streets.includes(street))) &&
+        React.createElement('input', {
+          type: 'text',
+          value: street === '__other__' ? '' : street,
+          onChange: e => update({ street: e.target.value }),
+          placeholder: 'Type street / road name',
+          style: { width: '100%', padding: '9px 12px', border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 14, background: C.surface, marginTop: 6 }
+        })
+    ) : null,
+    React.createElement(Field, { label: 'Lot / House Number', hint: 'e.g. Lot 5, House 12, Apt 3B' },
+      React.createElement('input', {
+        type: 'text',
+        value: lot_number,
+        onChange: e => update({ lot_number: e.target.value }),
+        placeholder: 'Lot 5',
+        style: { width: '100%', padding: '9px 12px', border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 14, background: C.surface }
+      })
+    ),
+    React.createElement(Field, { label: 'Map Pin', hint: 'Stand at the location, then tap to capture your exact GPS coordinates' },
+      React.createElement(Btn, {
+        size: 'sm',
+        variant: value.exact_pin ? 'success' : 'secondary',
+        onClick: useMyLocation,
+        disabled: gpsState === 'locating',
+        style: { marginBottom: 8 }
+      },
+        React.createElement(Icon, { name: gpsState === 'locating' ? 'refreshCw' : 'crosshair', size: 14 }),
+        ' ',
+        gpsState === 'locating' ? 'Getting your location…' : (value.exact_pin ? 'Re-capture exact location' : 'Use my current location')
+      )
+    ),
+    gpsState === 'error' && gpsError && React.createElement('div', {
+      style: { fontSize: 12, color: C.danger, marginBottom: 12 }
+    }, gpsError),
+    (value.lat && value.lng) ? React.createElement('div', {
+      style: { display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', background: value.exact_pin ? '#E8F5E9' : C.primaryLight, borderRadius: 6, marginBottom: 14, fontSize: 12, color: value.exact_pin ? '#2E7D32' : C.primaryDark }
+    }, React.createElement(Icon, { name: 'mapPin', size: 13, color: value.exact_pin ? '#2E7D32' : C.primary }),
+      value.exact_pin
+        ? `Exact GPS pin captured${value.gps_accuracy ? ` (±${value.gps_accuracy}m)` : ''}`
+        : `Approximate pin: ${community}${street && street !== '__other__' ? ', ' + street : ''} (community centroid — tap "Use my current location" above for an exact pin)`
+    ) : (community ? React.createElement('div', {
+      style: { fontSize: 12, color: C.warning, marginBottom: 14 }
+    }, '⚠ Community not in map index — use "Use my current location" above to set an exact pin') : null)
+  );
+}
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
 function Dashboard({
@@ -2235,7 +2060,7 @@ function Dashboard({
       fontSize: 11,
       color: online ? C.success : C.danger
     }
-  }, online ? 'Online' : 'Offline'), React.createElement(StorageWarning, null), syncPending > 0 && online && !syncing && /*#__PURE__*/React.createElement(Btn, {
+  }, online ? 'Online' : 'Offline'), syncPending > 0 && online && !syncing && /*#__PURE__*/React.createElement(Btn, {
     size: "sm",
     variant: "warning",
     onClick: onSync,
@@ -2736,7 +2561,7 @@ function ClientDetail({
     style: {
       fontSize: 14
     }
-  }, (gr.grant_type || gr.grantType || '—') + (gr.compassionate_subtype ? ' — ' + gr.compassionate_subtype : '')), /*#__PURE__*/React.createElement(StatusBadge, {
+  }, gr.grant_type || gr.grantType || '—'), /*#__PURE__*/React.createElement(StatusBadge, {
     status: gr.status
   })))));
 }
@@ -2774,8 +2599,6 @@ function PathModule({
     const latest = state.pathCases.find(p => p.id === sel.id) || sel;
     return /*#__PURE__*/React.createElement(PathDetail, {
       pathCase: latest,
-      officerName: state.profile?.name,
-      dispatch: dispatch,
       onEdit: () => {
         setSel(latest);
         setView('form');
@@ -2957,19 +2780,6 @@ function PathForm({
     lng: null,
     directions: '',
     household_members: [],
-    house_tenure: '',
-    telephone: '',
-    internet: '',
-    electricity: '',
-    wall_material: '',
-    garbage: '',
-    water_storage: '',
-    toilet: '',
-    water_source: '',
-    kitchen: '',
-    rooms: '',
-    weekly_food_spend: '',
-    assets: {},
     verifications: {},
     verification_notes: {},
     findings_narrative: '',
@@ -2980,8 +2790,7 @@ function PathForm({
     verification_result: '',
     field_officer: ''
   };
-  const formKey = pathCase?.id ? 'path_' + pathCase.id : 'path_new';
-  const [f, setF, draftAge, clearDraft] = useDraftAutoSave(formKey, pathCase || blank);
+  const [f, setF] = useState(pathCase || blank);
   const [tab, setTab] = useState(0);
   const set = k => v => setF(p => ({ ...p, [k]: v }));
   const prefill = cid => {
@@ -2998,436 +2807,185 @@ function PathForm({
       lat: cl.lat || null,
       lng: cl.lng || null,
       directions: cl.directions || ''
-    }));else set('client_id')(cid);
+    })); else set('client_id')(cid);
   };
   const addM = () => setF(p => ({
     ...p,
-    household_members: [...p.household_members, {
-      id: uid(),
-      name: '',
-      dob: '',
-      trn: '',
-      nis: '',
-      sex: '',
-      profession: '',
-      relationship: '',
-      disability: false,
-      pregnant: false
-    }]
+    household_members: [...p.household_members, { id: uid(), name: '', dob: '', trn: '', nis: '', sex: '', profession: '', relationship: '', disability: false, pregnant: false }]
   }));
   const updM = (id, k, v) => setF(p => ({
     ...p,
-    household_members: p.household_members.map(m => m.id === id ? {
-      ...m,
-      [k]: v
-    } : m)
+    household_members: p.household_members.map(m => m.id === id ? { ...m, [k]: v } : m)
   }));
   const delM = id => setF(p => ({
     ...p,
     household_members: p.household_members.filter(m => m.id !== id)
   }));
-  const TABS = ['Family Head', 'Members', 'House & Services', 'Assets', 'Verification', 'Recommendation'];
-  return /*#__PURE__*/React.createElement("div", {
-    style: {
-      padding: '16px 16px 100px'
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: 10,
-      marginBottom: 16
-    }
-  }, /*#__PURE__*/React.createElement(BackBtn, {
-    onClick: onCancel
-  }), /*#__PURE__*/React.createElement("h2", {
-    style: {
-      fontSize: 18,
-      color: C.primaryDark,
-      flex: 1
-    }
-  }, pathCase ? 'Edit PATH Case' : 'New PATH Case')), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'flex',
-      overflowX: 'auto',
-      marginBottom: 20,
-      borderBottom: `1px solid ${C.border}`
-    }
-  }, TABS.map((t, i) => /*#__PURE__*/React.createElement("button", {
-    key: t,
-    onClick: () => setTab(i),
-    style: {
-      flex: '0 0 auto',
-      padding: '8px 14px',
-      border: 'none',
-      borderBottom: i === tab ? `2px solid ${C.primary}` : '2px solid transparent',
-      background: 'none',
-      fontSize: 13,
-      fontWeight: i === tab ? 700 : 400,
-      color: i === tab ? C.primary : C.textMuted,
-      cursor: 'pointer',
-      whiteSpace: 'nowrap'
-    }
-  }, t))), tab === 0 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Field, {
-    label: "Case Type"
-  }, /*#__PURE__*/React.createElement(Sel, {
-    value: f.case_type,
-    onChange: set('case_type'),
-    options: ['New Application', 'Recertification']
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Status"
-  }, /*#__PURE__*/React.createElement(Sel, {
-    value: f.status,
-    onChange: set('status'),
-    options: ['Assigned', 'Visited', 'Report Written', 'Submitted']
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Assigned Date"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    type: "date",
-    value: f.assigned_date,
-    onChange: set('assigned_date')
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Visit Date"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    type: "date",
-    value: f.visit_date,
-    onChange: set('visit_date')
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Link to Client"
-  }, /*#__PURE__*/React.createElement(Sel, {
-    value: f.client_id,
-    onChange: prefill,
-    options: clients.map(c => ({
-      value: c.id,
-      label: c.name
-    })),
-    placeholder: "— select client (optional) —"
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Client Name",
-    required: true
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: f.client_name,
-    onChange: set('client_name'),
-    placeholder: "As on BIS 2010 form"
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Programme"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: f.programme,
-    onChange: set('programme')
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Family Number"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: f.family_no,
-    onChange: set('family_no')
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Payment Option"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: f.payment_option,
-    onChange: set('payment_option')
-  })), React.createElement(LocationPicker, {
-    value: { parish: f.parish, community: f.community, street: f.street, lot_number: f.lot_number, lat: f.lat, lng: f.lng },
-    onChange: v => setF(p => ({ ...p, ...v, residential_address: [v.lot_number, v.street, v.community, ST_THOMAS_PARISH].filter(Boolean).join(', ') }))
-  }),
-  React.createElement(Field, { label: "Mailing Address", hint: "If different from residential" },
-    React.createElement(Txt, { value: f.mailing_address, onChange: set('mailing_address'), rows: 2 })
-  ),
-  React.createElement(Field, { label: "Directions to House", hint: "Landmarks, turns, field notes" },
-    React.createElement(Txt, { value: f.directions, onChange: set('directions'), rows: 3 })
-  )), tab === 1 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: 12
-    }
-  }, /*#__PURE__*/React.createElement("p", {
-    style: {
-      fontSize: 13,
-      color: C.textMuted
-    }
-  }, "One entry per household member"), /*#__PURE__*/React.createElement(Btn, {
-    size: "sm",
-    onClick: addM
-  }, /*#__PURE__*/React.createElement(Icon, {
-    name: "plus",
-    size: 14
-  }), " Add")), f.household_members.length === 0 && /*#__PURE__*/React.createElement("div", {
-    style: {
-      textAlign: 'center',
-      padding: 24,
-      color: C.textMuted,
-      border: `1px dashed ${C.border}`,
-      borderRadius: 8
-    }
-  }, "No members added"), f.household_members.map((m, i) => /*#__PURE__*/React.createElement(Card, {
-    key: m.id,
-    style: {
-      marginBottom: 12
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      marginBottom: 10
-    }
-  }, /*#__PURE__*/React.createElement("span", {
-    style: {
-      fontWeight: 600,
-      fontSize: 13
-    }
-  }, "Member ", i + 1), /*#__PURE__*/React.createElement("button", {
-    onClick: () => delM(m.id),
-    style: {
-      background: 'none',
-      border: 'none',
-      cursor: 'pointer',
-      color: C.danger
-    }
-  }, /*#__PURE__*/React.createElement(Icon, {
-    name: "trash",
-    size: 15
-  }))), /*#__PURE__*/React.createElement(Field, {
-    label: "Name"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: m.name,
-    onChange: v => updM(m.id, 'name', v)
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Date of Birth"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    type: "date",
-    value: m.dob,
-    onChange: v => updM(m.id, 'dob', v)
-  })), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'grid',
-      gridTemplateColumns: '1fr 1fr',
-      gap: 10
-    }
-  }, /*#__PURE__*/React.createElement(Field, {
-    label: "TRN"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: m.trn,
-    onChange: v => updM(m.id, 'trn', v)
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "NIS"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: m.nis,
-    onChange: v => updM(m.id, 'nis', v)
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Sex"
-  }, /*#__PURE__*/React.createElement(Sel, {
-    value: m.sex,
-    onChange: v => updM(m.id, 'sex', v),
-    options: ['Male', 'Female'],
-    placeholder: "—"
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Relationship"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: m.relationship,
-    onChange: v => updM(m.id, 'relationship', v)
-  }))), /*#__PURE__*/React.createElement(Field, {
-    label: "Profession"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: m.profession,
-    onChange: v => updM(m.id, 'profession', v)
-  })), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'flex',
-      gap: 16,
-      marginTop: 4
-    }
-  }, [['disability', 'Disability/Illness'], ['pregnant', 'Pregnant']].map(([k, l]) => /*#__PURE__*/React.createElement("label", {
-    key: k,
-    style: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: 6,
-      fontSize: 13
-    }
-  }, /*#__PURE__*/React.createElement("input", {
-    type: "checkbox",
-    checked: m[k] || false,
-    onChange: e => updM(m.id, k, e.target.checked)
-  }), l)))))), tab === 2 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'grid',
-      gridTemplateColumns: '1fr 1fr',
-      gap: 10
-    }
-  }, [['house_tenure', 'Dwelling Tenure', ['Owned', 'Rented', 'Rent-free', 'Squatter']], ['wall_material', 'Wall Material', ['Concrete', 'Wood', 'Board', 'Mixed', 'Other']], ['toilet', 'Toilet Type', ['WC', 'Pit Latrine', 'None', 'Other']], ['water_source', 'Water Source', ['Pipe-borne', 'Tank', 'River', 'Well', 'Other']], ['kitchen', 'Kitchen', ['Separate', 'Within', 'None']]].map(([k, l, opts]) => /*#__PURE__*/React.createElement(Field, {
-    key: k,
-    label: l
-  }, /*#__PURE__*/React.createElement(Sel, {
-    value: f[k],
-    onChange: set(k),
-    options: opts,
-    placeholder: "—"
-  }))), [['rooms', 'Number of Rooms'], ['weekly_food_spend', 'Weekly Food Spend (JMD)']].map(([k, l]) => /*#__PURE__*/React.createElement(Field, {
-    key: k,
-    label: l
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: f[k],
-    onChange: set(k)
-  })))), [['telephone', 'Telephone'], ['internet', 'Internet'], ['electricity', 'Electricity'], ['garbage', 'Garbage Disposal'], ['water_storage', 'Water Storage']].map(([k, l]) => /*#__PURE__*/React.createElement(Field, {
-    key: k,
-    label: l
-  }, /*#__PURE__*/React.createElement(Sel, {
-    value: f[k],
-    onChange: set(k),
-    options: ['Yes', 'No'],
-    placeholder: "—"
-  })))), tab === 3 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
-    style: {
-      fontSize: 13,
-      color: C.textMuted,
-      marginBottom: 12
-    }
-  }, "Check all assets present in the household"), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'grid',
-      gridTemplateColumns: '1fr 1fr',
-      gap: 8
-    }
-  }, ASSETS.map(a => /*#__PURE__*/React.createElement("label", {
-    key: a,
-    style: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: 8,
-      fontSize: 13,
-      padding: '8px 10px',
-      background: f.assets[a] ? C.primaryLight : C.bg,
-      borderRadius: 8,
-      cursor: 'pointer',
-      border: `1px solid ${f.assets[a] ? C.primary : C.border}`
-    }
-  }, /*#__PURE__*/React.createElement("input", {
-    type: "checkbox",
-    checked: f.assets[a] || false,
-    onChange: e => setF(p => ({
-      ...p,
-      assets: {
-        ...p.assets,
-        [a]: e.target.checked
-      }
-    }))
-  }), a)))), tab === 4 && /*#__PURE__*/React.createElement(React.Fragment, null, VF.map(field => /*#__PURE__*/React.createElement(Card, {
-    key: field,
-    style: {
-      marginBottom: 12
-    }
-  }, /*#__PURE__*/React.createElement("p", {
-    style: {
-      fontWeight: 600,
-      fontSize: 13,
-      marginBottom: 8
-    }
-  }, field), /*#__PURE__*/React.createElement(Field, {
-    label: "Verification Result"
-  }, /*#__PURE__*/React.createElement(VfySelect, {
-    value: (f.verifications || {})[field],
-    onChange: v => setF(p => ({
-      ...p,
-      verifications: {
-        ...p.verifications,
-        [field]: v
-      }
-    }))
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Notes"
-  }, /*#__PURE__*/React.createElement(Txt, {
-    value: (f.verification_notes || {})[field],
-    onChange: v => setF(p => ({
-      ...p,
-      verification_notes: {
-        ...p.verification_notes,
-        [field]: v
-      }
-    })),
-    rows: 2,
-    placeholder: "What you observed"
-  })))), /*#__PURE__*/React.createElement(Field, {
-    label: "Overall Findings Narrative"
-  }, /*#__PURE__*/React.createElement(Txt, {
-    value: f.findings_narrative,
-    onChange: set('findings_narrative'),
-    rows: 5
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Photos"
-  }, /*#__PURE__*/React.createElement(PhotoAttach, {
-    photos: f.photos || [],
-    onChange: set('photos')
-  }))), tab === 5 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Field, {
-    label: "Recommendation"
-  }, /*#__PURE__*/React.createElement(Sel, {
-    value: f.recommendation,
-    onChange: set('recommendation'),
-    options: ['Approve', 'Approve with Conditions', 'Reject', 'Refer Back', 'Needs Follow-up'],
-    placeholder: "— select —"
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Application Result"
-  }, /*#__PURE__*/React.createElement(Sel, {
-    value: f.application_result,
-    onChange: set('application_result'),
-    options: ['Provisionally Approved', 'Continue', 'Rejected'],
-    placeholder: "— select —"
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Interview Date"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    type: "date",
-    value: f.interview_date,
-    onChange: set('interview_date')
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Verification Result"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: f.verification_result,
-    onChange: set('verification_result')
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Field Officer Name"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: f.field_officer,
-    onChange: set('field_officer')
-  })), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'flex',
-      gap: 10,
-      marginTop: 16
-    }
-  }, /*#__PURE__*/React.createElement(Btn, {
-    variant: "ghost",
-    onClick: onCancel,
-    style: {
-      flex: 1,
-      justifyContent: 'center'
-    }
-  }, "Cancel"), /*#__PURE__*/React.createElement(Btn, {
-    onClick: () => { clearDraft(); onSave(f); },
-    disabled: !f.client_name,
-    style: {
-      flex: 1,
-      justifyContent: 'center'
-    }
-  }, "Save Case"))), tab < 5 && /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'flex',
-      justifyContent: 'flex-end',
-      marginTop: 20
-    }
-  }, /*#__PURE__*/React.createElement(Btn, {
-    onClick: () => setTab(t => t + 1)
-  }, "Next ", /*#__PURE__*/React.createElement(Icon, {
-    name: "chevronRight",
-    size: 15
-  }))));
+  const TABS = ['Family Head', 'Members', 'Verification', 'Recommendation'];
+  return React.createElement('div', { style: { padding: '16px 16px 100px' } },
+    React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 } },
+      React.createElement(BackBtn, { onClick: onCancel }),
+      React.createElement('h2', { style: { fontSize: 18, color: C.primaryDark, flex: 1 } }, pathCase ? 'Edit PATH Case' : 'New PATH Case')
+    ),
+    React.createElement('div', { style: { display: 'flex', overflowX: 'auto', marginBottom: 20, borderBottom: `1px solid ${C.border}` } },
+      TABS.map((t, i) => React.createElement('button', {
+        key: t,
+        onClick: () => setTab(i),
+        style: {
+          flex: '0 0 auto',
+          padding: '8px 14px',
+          border: 'none',
+          borderBottom: i === tab ? `2px solid ${C.primary}` : '2px solid transparent',
+          background: 'none',
+          fontSize: 13,
+          fontWeight: i === tab ? 700 : 400,
+          color: i === tab ? C.primary : C.textMuted,
+          cursor: 'pointer',
+          whiteSpace: 'nowrap'
+        }
+      }, t))
+    ),
+
+    // TAB 0 — Family Head
+    tab === 0 && React.createElement(React.Fragment, null,
+      React.createElement(Field, { label: 'Case Type' },
+        React.createElement(Sel, { value: f.case_type, onChange: set('case_type'), options: ['New Application', 'Recertification'] })
+      ),
+      React.createElement(Field, { label: 'Status' },
+        React.createElement(Sel, { value: f.status, onChange: set('status'), options: ['Assigned', 'Visited', 'Report Written', 'Submitted'] })
+      ),
+      React.createElement(Field, { label: 'Assigned Date' },
+        React.createElement(Inp, { type: 'date', value: f.assigned_date, onChange: set('assigned_date') })
+      ),
+      React.createElement(Field, { label: 'Visit Date' },
+        React.createElement(Inp, { type: 'date', value: f.visit_date, onChange: set('visit_date') })
+      ),
+      React.createElement(Field, { label: 'Link to Client' },
+        React.createElement(Sel, { value: f.client_id, onChange: prefill, options: clients.map(c => ({ value: c.id, label: c.name })), placeholder: '— select client (optional) —' })
+      ),
+      React.createElement(Field, { label: 'Client Name', required: true },
+        React.createElement(Inp, { value: f.client_name, onChange: set('client_name'), placeholder: 'As on BIS 2010 form' })
+      ),
+      React.createElement(Field, { label: 'Programme' },
+        React.createElement(Inp, { value: f.programme, onChange: set('programme') })
+      ),
+      React.createElement(Field, { label: 'Family Number' },
+        React.createElement(Inp, { value: f.family_no, onChange: set('family_no') })
+      ),
+      React.createElement(Field, { label: 'Payment Option' },
+        React.createElement(Inp, { value: f.payment_option, onChange: set('payment_option') })
+      ),
+      React.createElement(LocationPicker, {
+        value: { parish: f.parish, community: f.community, street: f.street, lot_number: f.lot_number, lat: f.lat, lng: f.lng },
+        onChange: v => setF(p => ({ ...p, ...v, residential_address: [v.lot_number, v.street, v.community, ST_THOMAS_PARISH].filter(Boolean).join(', ') }))
+      }),
+      React.createElement(Field, { label: 'Mailing Address', hint: 'If different from residential' },
+        React.createElement(Txt, { value: f.mailing_address, onChange: set('mailing_address'), rows: 2 })
+      ),
+      React.createElement(Field, { label: 'Directions to House', hint: 'Landmarks, turns, field notes' },
+        React.createElement(Txt, { value: f.directions, onChange: set('directions'), rows: 3 })
+      )
+    ),
+
+    // TAB 1 — Members
+    tab === 1 && React.createElement(React.Fragment, null,
+      React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 } },
+        React.createElement('p', { style: { fontSize: 13, color: C.textMuted } }, 'One entry per household member'),
+        React.createElement(Btn, { size: 'sm', onClick: addM }, React.createElement(Icon, { name: 'plus', size: 14 }), ' Add')
+      ),
+      f.household_members.length === 0 && React.createElement('div', {
+        style: { textAlign: 'center', padding: 24, color: C.textMuted, border: `1px dashed ${C.border}`, borderRadius: 8 }
+      }, 'No members added'),
+      f.household_members.map((m, i) => React.createElement(Card, { key: m.id, style: { marginBottom: 12 } },
+        React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 10 } },
+          React.createElement('span', { style: { fontWeight: 600, fontSize: 13 } }, 'Member ', i + 1),
+          React.createElement('button', { onClick: () => delM(m.id), style: { background: 'none', border: 'none', cursor: 'pointer', color: C.danger } },
+            React.createElement(Icon, { name: 'trash', size: 15 })
+          )
+        ),
+        React.createElement(Field, { label: 'Name' }, React.createElement(Inp, { value: m.name, onChange: v => updM(m.id, 'name', v) })),
+        React.createElement(Field, { label: 'Date of Birth' }, React.createElement(Inp, { type: 'date', value: m.dob, onChange: v => updM(m.id, 'dob', v) })),
+        React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 } },
+          React.createElement(Field, { label: 'TRN' }, React.createElement(Inp, { value: m.trn, onChange: v => updM(m.id, 'trn', v) })),
+          React.createElement(Field, { label: 'NIS' }, React.createElement(Inp, { value: m.nis, onChange: v => updM(m.id, 'nis', v) })),
+          React.createElement(Field, { label: 'Sex' }, React.createElement(Sel, { value: m.sex, onChange: v => updM(m.id, 'sex', v), options: ['Male', 'Female'], placeholder: '—' })),
+          React.createElement(Field, { label: 'Relationship' }, React.createElement(Inp, { value: m.relationship, onChange: v => updM(m.id, 'relationship', v) }))
+        ),
+        React.createElement(Field, { label: 'Profession' }, React.createElement(Inp, { value: m.profession, onChange: v => updM(m.id, 'profession', v) })),
+        React.createElement('div', { style: { display: 'flex', gap: 16, marginTop: 4 } },
+          [['disability', 'Disability/Illness'], ['pregnant', 'Pregnant']].map(([k, l]) => React.createElement('label', {
+            key: k,
+            style: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }
+          }, React.createElement('input', { type: 'checkbox', checked: m[k] || false, onChange: e => updM(m.id, k, e.target.checked) }), l))
+        )
+      ))
+    ),
+
+    // TAB 2 — Verification (checklist of core eligibility facts; no asset/house grid)
+    tab === 2 && React.createElement(React.Fragment, null,
+      VF.map(field => React.createElement(Card, { key: field, style: { marginBottom: 12 } },
+        React.createElement('p', { style: { fontWeight: 600, fontSize: 13, marginBottom: 8 } }, field),
+        React.createElement(Field, { label: 'Verification Result' },
+          React.createElement(VfySelect, {
+            value: (f.verifications || {})[field],
+            onChange: v => setF(p => ({ ...p, verifications: { ...p.verifications, [field]: v } }))
+          })
+        ),
+        React.createElement(Field, { label: 'Notes' },
+          React.createElement(Txt, {
+            value: (f.verification_notes || {})[field],
+            onChange: v => setF(p => ({ ...p, verification_notes: { ...p.verification_notes, [field]: v } })),
+            rows: 2,
+            placeholder: 'What you observed'
+          })
+        )
+      )),
+      React.createElement(Field, { label: 'Overall Findings Narrative' },
+        React.createElement(Txt, { value: f.findings_narrative, onChange: set('findings_narrative'), rows: 5 })
+      ),
+      React.createElement(Field, { label: 'Photos' },
+        React.createElement(PhotoAttach, { photos: f.photos || [], onChange: set('photos') })
+      )
+    ),
+
+    // TAB 3 — Recommendation
+    tab === 3 && React.createElement(React.Fragment, null,
+      React.createElement(Field, { label: 'Recommendation' },
+        React.createElement(Sel, { value: f.recommendation, onChange: set('recommendation'), options: ['Approve', 'Approve with Conditions', 'Reject', 'Refer Back', 'Needs Follow-up'], placeholder: '— select —' })
+      ),
+      React.createElement(Field, { label: 'Application Result' },
+        React.createElement(Sel, { value: f.application_result, onChange: set('application_result'), options: ['Provisionally Approved', 'Continue', 'Rejected'], placeholder: '— select —' })
+      ),
+      React.createElement(Field, { label: 'Interview Date' },
+        React.createElement(Inp, { type: 'date', value: f.interview_date, onChange: set('interview_date') })
+      ),
+      React.createElement(Field, { label: 'Verification Result' },
+        React.createElement(Inp, { value: f.verification_result, onChange: set('verification_result') })
+      ),
+      React.createElement(Field, { label: 'Field Officer Name' },
+        React.createElement(Inp, { value: f.field_officer, onChange: set('field_officer') })
+      ),
+      React.createElement('div', { style: { display: 'flex', gap: 10, marginTop: 16 } },
+        React.createElement(Btn, { variant: 'ghost', onClick: onCancel, style: { flex: 1, justifyContent: 'center' } }, 'Cancel'),
+        React.createElement(Btn, {
+          onClick: () => onSave(f),
+          disabled: !f.client_name,
+          style: { flex: 1, justifyContent: 'center' }
+        }, 'Save Case')
+      )
+    ),
+
+    tab < 3 && React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', marginTop: 20 } },
+      React.createElement(Btn, { onClick: () => setTab(t => t + 1) }, 'Next ', React.createElement(Icon, { name: 'chevronRight', size: 15 }))
+    )
+  );
 }
 function PathDetail({
   pathCase: p,
   onEdit,
   onDelete,
   onBack,
-  onUpdate,
-  officerName,
-  dispatch
+  onUpdate
 }) {
   const [conf, setConf] = useState(false);
   const flow = ['Assigned', 'Visited', 'Report Written', 'Submitted'];
@@ -3800,8 +3358,7 @@ function GrantsModule({
       alignItems: 'center'
     }
   }, /*#__PURE__*/React.createElement(Badge, {
-    label: (g(gr, 'grant_type', 'grantType') || '—')
-      + (gr.compassionate_subtype ? ' — ' + gr.compassionate_subtype : '') ,
+    label: g(gr, 'grant_type', 'grantType') || '—',
     color: C.accent
   }), /*#__PURE__*/React.createElement("span", {
     style: {
@@ -3811,6 +3368,111 @@ function GrantsModule({
     }
   }, fmtDate(g(gr, 'assigned_date', 'assignedDate')))))));
 }
+// ── COMMITTEE REPORT QUESTION SETS ────────────────────────────────────────────
+// These mirror the exact numbered questions in the Ministry's template documents
+// (Questions_Rehab_Compass_Emergency_appeals_TEMPLATE_REPORT, Rehab_Compass_
+// Emergency_TEMPLATE_form, and ESI_TEMPLATE). Each answer is stored under its own
+// key in the grant record so the eventual committee report can be assembled
+// question-by-question with nothing summarized or merged.
+
+// Section A — Presenting Problem (asked for every grant type)
+const SECTION_A_QUESTIONS = [
+  { key: 'presenting_needs', q: "1. What are the client's needs?" },
+  { key: 'presenting_assistance_desired', q: '2. What form of assistance does the client desire and expect from the Ministry?' },
+  { key: 'presenting_prior_resources', q: '3. Which agencies/individuals/family/resources have been sought prior to approaching the Ministry?' },
+  { key: 'presenting_need_confirmed', q: '4. Confirm if information to substantiate need is accurate.' },
+  { key: 'presenting_path_nis_status', q: '5. State if client is a PATH Beneficiary/NIS Pensioner (where applicable).' }
+];
+
+// Grant-type-specific sections, keyed exactly as they appear in GRANT_TYPES
+const GRANT_SECTION_QUESTIONS = {
+  'Rehabilitation/Business': [
+    { key: 'b_business_environment', q: '1. Business Environment (Location, Is the business able to work in this environment?).' },
+    { key: 'b_access_to_market', q: '2. Access to market (Where will they sell? Who will they sell to?).' },
+    { key: 'b_viability_profitability', q: '3. Viability/Profitability (Competition).' },
+    { key: 'b_capacity_entrepreneur', q: '4. Capacity of Entrepreneur (ability to conduct business).' },
+    { key: 'b_necessary_license', q: '5. Necessary license (e.g. Food Handlers Permit).' },
+    { key: 'b_business_plan', q: '6. Complete Business Plan.' }
+  ],
+  'Compassionate House Repair': [
+    { key: 'c_current_residence', q: '1. Where does the client currently reside?' },
+    { key: 'c_physical_condition', q: '2. What is the physical condition of the living accommodation?' },
+    { key: 'c_dormitory_sanitary', q: '3. Does the client have suitable dormitory and sanitary facilities?' },
+    { key: 'c_individuals_sharing', q: '4. How many individuals share dwelling?' },
+    { key: 'c_space_sufficient', q: '5. Is the space sufficient for the number of individuals?' },
+    { key: 'c_tenure_type', q: '6. Is the living space rented, leased, owned or family owned?' },
+    { key: 'c_permission_long_term', q: '7. Does the client have permission to continue residing on the premises long term?' },
+    { key: 'c_tenure_documentation', q: '8. Documentation for Security of tenure (Letter of Permission signed by J.P., Copy of Land Title, Tax Receipt).' }
+  ],
+  'Medical': [
+    { key: 'd_has_medical_insurance', q: '1. Does the client have Medical Insurance?' },
+    { key: 'd_why_seeking_pad', q: '2. If yes, why are they seeking PAD assistance?' },
+    { key: 'd_other_assistance_source', q: '3. Other source of assistance.' }
+  ],
+  'Funeral': [
+    { key: 'e_deceased_employed', q: '1. Was the deceased employed/self-employed?' },
+    { key: 'e_eligible_nis_funeral', q: '2. Is the deceased eligible for the NIS Funeral Grant?' },
+    { key: 'e_funeral_home_contact', q: '3. Was contact made with the Funeral Home to verify monies owing to them? (Include the name of Funeral Representative in the report.)' }
+  ],
+  'Emergency': [
+    { key: 'f_how_disaster_occurred', q: '1. State how disaster occurred (e.g. Fire, Flood).' },
+    { key: 'f_property_insured', q: '2. Was property insured/mortgage?' },
+    { key: 'f_estimate_loss', q: '3. Estimate loss (if possible).' },
+    { key: 'f_tenant_or_owner', q: '4. Was the client tenant/owner?' }
+  ],
+  'Addition': [
+    { key: 'h_residing_in_household', q: '1. Indicate if individual to be added is residing in household.' },
+    { key: 'h_solely_dependent', q: "2. If individual to be added is solely dependent on family representative/head, especially if individual is not son/daughter." },
+    { key: 'h_other_members_reason', q: '3. State why "other family members" are living with family rep/head.' },
+    { key: 'h_parent_guardian_whereabouts', q: '4. Whereabouts of parent/guardian.' },
+    { key: 'h_parent_guardian_support', q: '5. If parent/guardian is employed or contributing financially to individual.' }
+  ],
+  'Appeals': [
+    { key: 'i_income_expenditure', q: '1. Confirm income/expenditure.' },
+    { key: 'i_socioeconomic_background', q: "2a. Socio-economic background (school, subjects, church, etc. — client's background)." },
+    { key: 'i_support_assistance', q: '2b. Support/assistance.' },
+    { key: 'i_medical_conditions', q: '2c. Any medical conditions.' },
+    { key: 'i_financial_support_parents', q: "2d. Financial support by father(s)/mother(s) of children." },
+    { key: 'i_skills', q: '2e. Any skills.' },
+    { key: 'i_expenditure_exceeds_income', q: '2f. If expenditure is greater than income, state other support to meet same.' },
+    { key: 'i_condition_of_dwelling', q: '2g. Condition of dwelling.' },
+    { key: 'i_bill_payment', q: '2h. Payment of Bills (Light, Water, etc.).' },
+    { key: 'i_employment_history', q: '2i. Employment status/history (if necessary).' }
+  ]
+};
+
+// E.S.I. Grant uses its own longer template (ESI_TEMPLATE), not the generic Section G.
+// It still starts with the common Section A questions, then continues with these.
+const ESI_QUESTIONS = [
+  { key: 'esi_employment_status', q: '1. Employment status (how much is earned).' },
+  { key: 'esi_educational_background', q: '2. Educational background.' },
+  { key: 'esi_has_children', q: '3. Does applicant have children?' },
+  { key: 'esi_student_employment_status', q: "4. Student's employment status (how much is earned)." },
+  { key: 'esi_student_savings', q: '5. Does applicant/student have any savings?' },
+  { key: 'esi_money_paid_already', q: '6. Was any money paid already?' },
+  { key: 'esi_money_source_if_paid', q: '7. If yes, where did they obtain the money?' },
+  { key: 'esi_anybody_else_employed', q: '8. Is anybody else in the house employed?' },
+  { key: 'esi_other_assistance_source', q: '9. Other source of assistance.' },
+  { key: 'esi_family_medical_background', q: '10. Medical background of family.' },
+  { key: 'esi_parents_information', q: "11. Information about the child's parent/parents." },
+  { key: 'esi_other_agency_assistance', q: '12. Did family apply or obtain assistance from other agencies?' },
+  { key: 'esi_applied_student_loan', q: '13. Did the client apply for a Student Loan?' },
+  { key: 'esi_fund_rest_of_term', q: '14. How does the client plan to fund the rest of the school term (if any)?' }
+];
+
+function ReportQuestionBlock({ questions, values, onChange }) {
+  return React.createElement(React.Fragment, null,
+    questions.map(item => React.createElement(Field, { key: item.key, label: item.q },
+      React.createElement(Txt, {
+        value: values[item.key],
+        onChange: v => onChange(item.key, v),
+        rows: 4,
+        placeholder: 'Type the answer for this question — be as detailed as needed'
+      })
+    ))
+  );
+}
+
 function GrantForm({
   grant,
   clients,
@@ -3819,7 +3481,6 @@ function GrantForm({
 }) {
   const blank = {
     grant_type: '',
-    compassionate_subtype: '',
     status: 'Assigned',
     assigned_date: today(),
     client_id: '',
@@ -3842,13 +3503,8 @@ function GrantForm({
     path_family_no: '',
     property_tenure: '',
     family_info: [],
-    specific_reason: '',
     interview_notes: '',
     investigation_findings: '',
-    damage_description: '',
-    condition_description: '',
-    situation_description: '',
-    business_description: '',
     recommendation: '',
     recommended_amount: '',
     payee: '',
@@ -3860,11 +3516,24 @@ function GrantForm({
     applicant_id_type: '',
     applicant_id_number: '',
     photos: []
+    // Section A + grant-type-specific question keys are added dynamically below
+    // (see SECTION_A_QUESTIONS, GRANT_SECTION_QUESTIONS, ESI_QUESTIONS) so every
+    // numbered question always has a defined string key, even if blank.
   };
-  const formKey = grant?.id ? 'grant_' + grant.id : 'grant_new';
-  const [f, setF, draftAge, clearDraft] = useDraftAutoSave(formKey, grant || blank);
+  // Ensure every possible question key exists on the form state with a safe default,
+  // so switching grant_type never loses previously-typed answers for other types.
+  const allQuestionKeys = [
+    ...SECTION_A_QUESTIONS.map(q => q.key),
+    ...Object.values(GRANT_SECTION_QUESTIONS).flat().map(q => q.key),
+    ...ESI_QUESTIONS.map(q => q.key)
+  ];
+  allQuestionKeys.forEach(k => { if (!(k in blank)) blank[k] = ''; });
+
+  const [f, setF] = useState(() => ({ ...blank, ...(grant || {}) }));
   const [tab, setTab] = useState(0);
   const set = k => v => setF(p => ({ ...p, [k]: v }));
+  const setQ = (k, v) => setF(p => ({ ...p, [k]: v }));
+
   const prefill = cid => {
     const cl = clients.find(c => c.id === cid);
     if (cl) setF(p => ({
@@ -3882,397 +3551,215 @@ function GrantForm({
       lng: cl.lng || null,
       address: cl.address || '',
       directions: cl.directions || ''
-    }));else set('client_id')(cid);
+    })); else set('client_id')(cid);
   };
+
   const addFM = () => setF(p => ({
     ...p,
-    family_info: [...p.family_info, {
-      id: uid(),
-      name: '',
-      relationship: '',
-      dob: '',
-      occupation: ''
-    }]
+    family_info: [...p.family_info, { id: uid(), name: '', relationship: '', dob: '', occupation: '' }]
   }));
   const updFM = (id, k, v) => setF(p => ({
     ...p,
-    family_info: p.family_info.map(m => m.id === id ? {
-      ...m,
-      [k]: v
-    } : m)
+    family_info: p.family_info.map(m => m.id === id ? { ...m, [k]: v } : m)
   }));
   const delFM = id => setF(p => ({
     ...p,
     family_info: p.family_info.filter(m => m.id !== id)
   }));
+
   const method = GRANT_METHOD[f.grant_type] || '';
-  const subLabel = f.grant_type === 'Compassionate Grant' && f.compassionate_subtype ? ' — ' + f.compassionate_subtype : '';
-  const TABS = ['Application', 'Investigation', 'Recommendation', 'Disbursement'];
-  return /*#__PURE__*/React.createElement("div", {
-    style: {
-      padding: '16px 16px 100px'
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: 10,
-      marginBottom: 16
-    }
-  }, /*#__PURE__*/React.createElement(BackBtn, {
-    onClick: onCancel
-  }), /*#__PURE__*/React.createElement("h2", {
-    style: {
-      fontSize: 18,
-      color: C.primaryDark,
-      flex: 1
-    }
-  }, grant ? 'Edit Grant' : 'New Grant Investigation')), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'flex',
-      overflowX: 'auto',
-      marginBottom: 20,
-      borderBottom: `1px solid ${C.border}`
-    }
-  }, TABS.map((t, i) => /*#__PURE__*/React.createElement("button", {
-    key: t,
-    onClick: () => setTab(i),
-    style: {
-      flex: '0 0 auto',
-      padding: '8px 14px',
-      border: 'none',
-      borderBottom: i === tab ? `2px solid ${C.primary}` : '2px solid transparent',
-      background: 'none',
-      fontSize: 13,
-      fontWeight: i === tab ? 700 : 400,
-      color: i === tab ? C.primary : C.textMuted,
-      cursor: 'pointer'
-    }
-  }, t))), tab === 0 && /*#__PURE__*/React.createElement(React.Fragment, null, React.createElement(Field, { label: "Grant Type", required: true },
-    React.createElement(Sel, {
-      value: f.grant_type,
-      onChange: v => setF(p => ({ ...p, grant_type: v, compassionate_subtype: '' })),
-      options: GRANT_TYPES,
-      placeholder: "— select grant type —"
-    })
-  ),
-  f.grant_type === 'Compassionate Grant' && React.createElement(Field, {
-    label: "Compassionate Sub-Type",
-    required: true,
-    hint: "Medical, Funeral and House Repair all fall under Compassionate Grant"
-  },
-    React.createElement(Sel, {
-      value: f.compassionate_subtype || '',
-      onChange: set('compassionate_subtype'),
-      options: COMPASSIONATE_SUBTYPES,
-      placeholder: "— select sub-type —"
-    })
-  ),
-  method && React.createElement("div", {
-    style: { background: C.primaryLight, border: `1px solid ${C.primary}44`,
-      borderRadius: 8, padding: '8px 12px', marginBottom: 14,
-      fontSize: 13, color: C.primaryDark, display: 'flex', alignItems: 'flex-start', gap: 6 }
-  }, React.createElement(Icon, { name: "info", size: 14, color: C.primary }), method), /*#__PURE__*/React.createElement(Field, {
-    label: "Status"
-  }, /*#__PURE__*/React.createElement(Sel, {
-    value: f.status,
-    onChange: set('status'),
-    options: ['Assigned', 'Interviewed', 'Investigated', 'Report Written', 'Submitted']
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Assigned Date"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    type: "date",
-    value: f.assigned_date,
-    onChange: set('assigned_date')
-  })), React.createElement(Field, { label: "Parish" },
-    React.createElement('div', { style: { padding: '9px 12px', border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 14, background: '#f5f5f5', color: C.textMuted } },
-      ST_THOMAS_PARISH, ' ', React.createElement('span', { style: { fontSize: 11 } }, '(fixed)')
+  const sectionLabel = GRANT_SECTION_LABEL[f.grant_type] || '';
+  const isESI = f.grant_type === 'Education & Social Intervention';
+  const typeQuestions = isESI ? ESI_QUESTIONS : (GRANT_SECTION_QUESTIONS[f.grant_type] || []);
+  const TABS = ['Presenting Problem', 'Grant Questions', 'Investigation', 'Recommendation', 'Disbursement'];
+
+  return React.createElement('div', { style: { padding: '16px 16px 100px' } },
+    React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 } },
+      React.createElement(BackBtn, { onClick: onCancel }),
+      React.createElement('h2', { style: { fontSize: 18, color: C.primaryDark, flex: 1 } }, grant ? 'Edit Grant' : 'New Grant Investigation')
+    ),
+    React.createElement('div', { style: { display: 'flex', overflowX: 'auto', marginBottom: 20, borderBottom: `1px solid ${C.border}` } },
+      TABS.map((t, i) => React.createElement('button', {
+        key: t,
+        onClick: () => setTab(i),
+        style: {
+          flex: '0 0 auto',
+          padding: '8px 14px',
+          border: 'none',
+          borderBottom: i === tab ? `2px solid ${C.primary}` : '2px solid transparent',
+          background: 'none',
+          fontSize: 13,
+          fontWeight: i === tab ? 700 : 400,
+          color: i === tab ? C.primary : C.textMuted,
+          cursor: 'pointer',
+          whiteSpace: 'nowrap'
+        }
+      }, t))
+    ),
+
+    // TAB 0 — Grant type, status, client identification, location
+    tab === 0 && React.createElement(React.Fragment, null,
+      React.createElement(Field, { label: 'Grant Type', required: true },
+        React.createElement(Sel, { value: f.grant_type, onChange: set('grant_type'), options: GRANT_TYPES, placeholder: '— select grant type —' })
+      ),
+      sectionLabel && React.createElement('div', {
+        style: { fontSize: 11, color: C.textMuted, marginTop: -8, marginBottom: 14 }
+      }, sectionLabel),
+      method && React.createElement('div', {
+        style: { background: C.primaryLight, border: `1px solid ${C.primary}44`, borderRadius: 8, padding: '8px 12px', marginBottom: 14, fontSize: 13, color: C.primaryDark, display: 'flex', alignItems: 'flex-start', gap: 6 }
+      }, React.createElement(Icon, { name: 'info', size: 14, color: C.primary }), method),
+      React.createElement(Field, { label: 'Status' },
+        React.createElement(Sel, { value: f.status, onChange: set('status'), options: ['Assigned', 'Interviewed', 'Investigated', 'Report Written', 'Submitted'] })
+      ),
+      React.createElement(Field, { label: 'Assigned Date' },
+        React.createElement(Inp, { type: 'date', value: f.assigned_date, onChange: set('assigned_date') })
+      ),
+      React.createElement(Field, { label: 'Parish' },
+        React.createElement('div', { style: { padding: '9px 12px', border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 14, background: '#f5f5f5', color: C.textMuted } },
+          ST_THOMAS_PARISH, ' ', React.createElement('span', { style: { fontSize: 11 } }, '(fixed)')
+        )
+      ),
+      React.createElement(Field, { label: 'Link to Client' },
+        React.createElement(Sel, { value: f.client_id, onChange: prefill, options: clients.map(c => ({ value: c.id, label: c.name })), placeholder: '— select client (optional) —' })
+      ),
+      React.createElement(Field, { label: 'Applicant Name', required: true },
+        React.createElement(Inp, { value: f.client_name, onChange: set('client_name') })
+      ),
+      React.createElement(Field, { label: 'Alias' },
+        React.createElement(Inp, { value: f.alias, onChange: set('alias') })
+      ),
+      React.createElement(Field, { label: 'Date of Birth' },
+        React.createElement(Inp, { type: 'date', value: f.dob, onChange: set('dob') })
+      ),
+      React.createElement(Field, { label: 'TRN' },
+        React.createElement(Inp, { value: f.trn, onChange: set('trn') })
+      ),
+      React.createElement(Field, { label: 'Phone' },
+        React.createElement(Inp, { value: f.phone, onChange: set('phone') })
+      ),
+      React.createElement(LocationPicker, {
+        value: { parish: f.parish, community: f.community, street: f.street, lot_number: f.lot_number, lat: f.lat, lng: f.lng },
+        onChange: v => setF(p => ({ ...p, ...v, address: [v.lot_number, v.street, v.community, ST_THOMAS_PARISH].filter(Boolean).join(', ') }))
+      }),
+      React.createElement(Field, { label: 'Directions', hint: 'Landmarks, turns, field notes' },
+        React.createElement(Txt, { value: f.directions, onChange: set('directions'), rows: 2 })
+      ),
+      React.createElement(Field, { label: 'Marital Status' },
+        React.createElement(Sel, { value: f.marital_status, onChange: set('marital_status'), options: ['Single', 'Married', 'Common-law', 'Widowed', 'Separated', 'Divorced'], placeholder: '—' })
+      ),
+      React.createElement(Field, { label: 'Occupation' },
+        React.createElement(Inp, { value: f.occupation, onChange: set('occupation') })
+      ),
+      React.createElement(Field, { label: 'Physical Condition' },
+        React.createElement(Inp, { value: f.physical_condition, onChange: set('physical_condition') })
+      ),
+      React.createElement(Field, { label: 'PATH Family Number' },
+        React.createElement(Inp, { value: f.path_family_no, onChange: set('path_family_no') })
+      ),
+      React.createElement(Field, { label: 'Property Tenure' },
+        React.createElement(Sel, { value: f.property_tenure, onChange: set('property_tenure'), options: ['Owned', 'Rented', 'Rent-free', 'Squatter'], placeholder: '—' })
+      ),
+      React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '8px 0 4px' } },
+        React.createElement('label', { style: { fontSize: 12, fontWeight: 600, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '.5px' } }, 'Family Information'),
+        React.createElement(Btn, { size: 'sm', onClick: addFM }, React.createElement(Icon, { name: 'plus', size: 13 }), ' Add')
+      ),
+      f.family_info.map((m, i) => React.createElement(Card, { key: m.id, style: { marginBottom: 8 } },
+        React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 8 } },
+          React.createElement('span', { style: { fontSize: 13, fontWeight: 600 } }, 'Member ', i + 1),
+          React.createElement('button', { onClick: () => delFM(m.id), style: { background: 'none', border: 'none', cursor: 'pointer', color: C.danger } },
+            React.createElement(Icon, { name: 'trash', size: 14 })
+          )
+        ),
+        React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 } },
+          React.createElement(Field, { label: 'Name' }, React.createElement(Inp, { value: m.name, onChange: v => updFM(m.id, 'name', v) })),
+          React.createElement(Field, { label: 'Relationship' }, React.createElement(Inp, { value: m.relationship, onChange: v => updFM(m.id, 'relationship', v) })),
+          React.createElement(Field, { label: 'DOB' }, React.createElement(Inp, { type: 'date', value: m.dob, onChange: v => updFM(m.id, 'dob', v) })),
+          React.createElement(Field, { label: 'Occupation' }, React.createElement(Inp, { value: m.occupation, onChange: v => updFM(m.id, 'occupation', v) }))
+        )
+      ))
+    ),
+
+    // TAB 1 — Section A (Presenting Problem, common to all) + grant-type-specific numbered questions
+    tab === 1 && React.createElement(React.Fragment, null,
+      !f.grant_type && React.createElement('p', { style: { fontSize: 13, color: C.textMuted, marginBottom: 14 } },
+        'Select a Grant Type on the Presenting Problem tab to see the questions for that grant.'
+      ),
+      React.createElement('p', { style: { fontSize: 12, fontWeight: 700, color: C.primaryDark, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 10 } },
+        'Presenting Problem (All Grants)'
+      ),
+      React.createElement(ReportQuestionBlock, { questions: SECTION_A_QUESTIONS, values: f, onChange: setQ }),
+      f.grant_type && React.createElement(React.Fragment, null,
+        React.createElement('p', { style: { fontSize: 12, fontWeight: 700, color: C.primaryDark, textTransform: 'uppercase', letterSpacing: '.5px', margin: '18px 0 10px' } },
+          sectionLabel || f.grant_type
+        ),
+        React.createElement(ReportQuestionBlock, { questions: typeQuestions, values: f, onChange: setQ })
+      )
+    ),
+
+    // TAB 2 — Investigation / home visit notes + photos
+    tab === 2 && React.createElement(React.Fragment, null,
+      React.createElement(Field, { label: 'Interview Notes' },
+        React.createElement(Txt, { value: f.interview_notes, onChange: set('interview_notes'), rows: 5, placeholder: 'What the applicant said' })
+      ),
+      React.createElement(Field, { label: 'Investigation / Home Visit Findings' },
+        React.createElement(Txt, { value: f.investigation_findings, onChange: set('investigation_findings'), rows: 5, placeholder: 'What you personally observed' })
+      ),
+      React.createElement(Field, { label: 'Photos' },
+        React.createElement(PhotoAttach, { photos: f.photos || [], onChange: set('photos') })
+      )
+    ),
+
+    // TAB 3 — Recommendation
+    tab === 3 && React.createElement(React.Fragment, null,
+      React.createElement(Field, { label: 'Recommendation' },
+        React.createElement(Sel, { value: f.recommendation, onChange: set('recommendation'), options: ['Approve', 'Reject', 'Refer'], placeholder: '—' })
+      ),
+      React.createElement(Field, { label: 'Recommended Amount (JMD)' },
+        React.createElement(Inp, { value: f.recommended_amount, onChange: set('recommended_amount') })
+      ),
+      React.createElement(Field, { label: 'Payee Name' },
+        React.createElement(Inp, { value: f.payee, onChange: set('payee') })
+      ),
+      React.createElement(Field, { label: 'Payee TRN' },
+        React.createElement(Inp, { value: f.payee_trn, onChange: set('payee_trn') })
+      )
+    ),
+
+    // TAB 4 — Disbursement (kept in full, per user decision)
+    tab === 4 && React.createElement(React.Fragment, null,
+      React.createElement('p', { style: { fontSize: 13, color: C.textMuted, marginBottom: 14 } }, 'Complete when cheque is issued'),
+      React.createElement(Field, { label: 'Cheque Number' },
+        React.createElement(Inp, { value: f.cheque_number, onChange: set('cheque_number') })
+      ),
+      React.createElement(Field, { label: 'Cheque Date' },
+        React.createElement(Inp, { type: 'date', value: f.cheque_date, onChange: set('cheque_date') })
+      ),
+      React.createElement(Field, { label: 'Amount (Figures)' },
+        React.createElement(Inp, { value: f.cheque_amount, onChange: set('cheque_amount') })
+      ),
+      React.createElement(Field, { label: 'Amount (Words)' },
+        React.createElement(Inp, { value: f.cheque_amount_words, onChange: set('cheque_amount_words') })
+      ),
+      React.createElement(Field, { label: 'Applicant ID Type' },
+        React.createElement(Sel, { value: f.applicant_id_type, onChange: set('applicant_id_type'), options: ['National ID', 'Passport', "Driver's Licence", 'Voter ID'], placeholder: '—' })
+      ),
+      React.createElement(Field, { label: 'Applicant ID Number' },
+        React.createElement(Inp, { value: f.applicant_id_number, onChange: set('applicant_id_number') })
+      ),
+      React.createElement('div', { style: { display: 'flex', gap: 10, marginTop: 16 } },
+        React.createElement(Btn, { variant: 'ghost', onClick: onCancel, style: { flex: 1, justifyContent: 'center' } }, 'Cancel'),
+        React.createElement(Btn, {
+          onClick: () => onSave(f),
+          disabled: !f.client_name || !f.grant_type,
+          style: { flex: 1, justifyContent: 'center' }
+        }, 'Save')
+      )
+    ),
+
+    tab < 4 && React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', marginTop: 20 } },
+      React.createElement(Btn, { onClick: () => setTab(t => t + 1) }, 'Next ', React.createElement(Icon, { name: 'chevronRight', size: 15 }))
     )
-  ), React.createElement(Field, { label: "Link to Client"
-  }, /*#__PURE__*/React.createElement(Sel, {
-    value: f.client_id,
-    onChange: prefill,
-    options: clients.map(c => ({
-      value: c.id,
-      label: c.name
-    })),
-    placeholder: "— select client (optional) —"
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Applicant Name",
-    required: true
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: f.client_name,
-    onChange: set('client_name')
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Alias"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: f.alias,
-    onChange: set('alias')
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Date of Birth"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    type: "date",
-    value: f.dob,
-    onChange: set('dob')
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "TRN"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: f.trn,
-    onChange: set('trn')
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Phone"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: f.phone,
-    onChange: set('phone')
-  })), React.createElement(LocationPicker, {
-    value: { parish: f.parish, community: f.community, street: f.street, lot_number: f.lot_number, lat: f.lat, lng: f.lng },
-    onChange: v => setF(p => ({ ...p, ...v, address: [v.lot_number, v.street, v.community, ST_THOMAS_PARISH].filter(Boolean).join(', ') }))
-  }),
-  React.createElement(Field, { label: "Directions", hint: "Landmarks, turns, field notes" },
-    React.createElement(Txt, { value: f.directions, onChange: set('directions'), rows: 2 })
-  ), React.createElement(Field, { label: "Marital Status"
-  }, /*#__PURE__*/React.createElement(Sel, {
-    value: f.marital_status,
-    onChange: set('marital_status'),
-    options: ['Single', 'Married', 'Common-law', 'Widowed', 'Separated', 'Divorced'],
-    placeholder: "—"
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Occupation"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: f.occupation,
-    onChange: set('occupation')
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Physical Condition"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: f.physical_condition,
-    onChange: set('physical_condition')
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "PATH Family Number"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: f.path_family_no,
-    onChange: set('path_family_no')
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Property Tenure"
-  }, /*#__PURE__*/React.createElement(Sel, {
-    value: f.property_tenure,
-    onChange: set('property_tenure'),
-    options: ['Owned', 'Rented', 'Rent-free', 'Squatter'],
-    placeholder: "—"
-  })), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      margin: '8px 0 4px'
-    }
-  }, /*#__PURE__*/React.createElement("label", {
-    style: {
-      fontSize: 12,
-      fontWeight: 600,
-      color: C.textMuted,
-      textTransform: 'uppercase',
-      letterSpacing: '.5px'
-    }
-  }, "Family Information"), /*#__PURE__*/React.createElement(Btn, {
-    size: "sm",
-    onClick: addFM
-  }, /*#__PURE__*/React.createElement(Icon, {
-    name: "plus",
-    size: 13
-  }), " Add")), f.family_info.map((m, i) => /*#__PURE__*/React.createElement(Card, {
-    key: m.id,
-    style: {
-      marginBottom: 8
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      marginBottom: 8
-    }
-  }, /*#__PURE__*/React.createElement("span", {
-    style: {
-      fontSize: 13,
-      fontWeight: 600
-    }
-  }, "Member ", i + 1), /*#__PURE__*/React.createElement("button", {
-    onClick: () => delFM(m.id),
-    style: {
-      background: 'none',
-      border: 'none',
-      cursor: 'pointer',
-      color: C.danger
-    }
-  }, /*#__PURE__*/React.createElement(Icon, {
-    name: "trash",
-    size: 14
-  }))), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'grid',
-      gridTemplateColumns: '1fr 1fr',
-      gap: 8
-    }
-  }, /*#__PURE__*/React.createElement(Field, {
-    label: "Name"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: m.name,
-    onChange: v => updFM(m.id, 'name', v)
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Relationship"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: m.relationship,
-    onChange: v => updFM(m.id, 'relationship', v)
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "DOB"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    type: "date",
-    value: m.dob,
-    onChange: v => updFM(m.id, 'dob', v)
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Occupation"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: m.occupation,
-    onChange: v => updFM(m.id, 'occupation', v)
-  }))))), /*#__PURE__*/React.createElement(Field, {
-    label: "Specific Reason"
-  }, /*#__PURE__*/React.createElement(Txt, {
-    value: f.specific_reason,
-    onChange: set('specific_reason'),
-    rows: 4,
-    placeholder: "Why is the applicant applying?"
-  }))), tab === 1 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Field, {
-    label: "Interview Notes"
-  }, /*#__PURE__*/React.createElement(Txt, {
-    value: f.interview_notes,
-    onChange: set('interview_notes'),
-    rows: 5,
-    placeholder: "What the applicant said"
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Investigation / Home Visit Findings"
-  }, /*#__PURE__*/React.createElement(Txt, {
-    value: f.investigation_findings,
-    onChange: set('investigation_findings'),
-    rows: 5,
-    placeholder: "What you personally observed"
-  })),
-  f.compassionate_subtype === 'House Repair' && React.createElement(Field, {
-    label: "Damage Description"
-  }, React.createElement(Txt, {
-    value: f.damage_description,
-    onChange: set('damage_description'),
-    rows: 4
-  })),
-  f.compassionate_subtype === 'Medical' && React.createElement(Field, {
-    label: "Medical Condition Observed"
-  }, React.createElement(Txt, {
-    value: f.condition_description,
-    onChange: set('condition_description'),
-    rows: 4
-  })),
-  f.grant_type === 'Rehabilitation Grant' && React.createElement(Field, {
-    label: "Living Situation, Capacity & Needs"
-  }, React.createElement(Txt, {
-    value: f.situation_description,
-    onChange: set('situation_description'),
-    rows: 4
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Photos"
-  }, /*#__PURE__*/React.createElement(PhotoAttach, {
-    photos: f.photos || [],
-    onChange: set('photos')
-  }))), tab === 2 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Field, {
-    label: "Recommendation"
-  }, /*#__PURE__*/React.createElement(Sel, {
-    value: f.recommendation,
-    onChange: set('recommendation'),
-    options: ['Approve', 'Reject', 'Refer'],
-    placeholder: "—"
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Recommended Amount (JMD)"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: f.recommended_amount,
-    onChange: set('recommended_amount')
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Payee Name"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: f.payee,
-    onChange: set('payee')
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Payee TRN"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: f.payee_trn,
-    onChange: set('payee_trn')
-  }))), tab === 3 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
-    style: {
-      fontSize: 13,
-      color: C.textMuted,
-      marginBottom: 14
-    }
-  }, "Complete when cheque is issued"), /*#__PURE__*/React.createElement(Field, {
-    label: "Cheque Number"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: f.cheque_number,
-    onChange: set('cheque_number')
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Cheque Date"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    type: "date",
-    value: f.cheque_date,
-    onChange: set('cheque_date')
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Amount (Figures)"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: f.cheque_amount,
-    onChange: set('cheque_amount')
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Amount (Words)"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: f.cheque_amount_words,
-    onChange: set('cheque_amount_words')
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Applicant ID Type"
-  }, /*#__PURE__*/React.createElement(Sel, {
-    value: f.applicant_id_type,
-    onChange: set('applicant_id_type'),
-    options: ["National ID", "Passport", "Driver's Licence", "Voter ID"],
-    placeholder: "—"
-  })), /*#__PURE__*/React.createElement(Field, {
-    label: "Applicant ID Number"
-  }, /*#__PURE__*/React.createElement(Inp, {
-    value: f.applicant_id_number,
-    onChange: set('applicant_id_number')
-  })), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'flex',
-      gap: 10,
-      marginTop: 16
-    }
-  }, /*#__PURE__*/React.createElement(Btn, {
-    variant: "ghost",
-    onClick: onCancel,
-    style: {
-      flex: 1,
-      justifyContent: 'center'
-    }
-  }, "Cancel"), /*#__PURE__*/React.createElement(Btn, {
-    onClick: () => { clearDraft(); onSave(f); },
-    disabled: !f.client_name || !f.grant_type || (f.grant_type === 'Compassionate Grant' && !f.compassionate_subtype),
-    style: {
-      flex: 1,
-      justifyContent: 'center'
-    }
-  }, "Save"))), tab < 3 && /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'flex',
-      justifyContent: 'flex-end',
-      marginTop: 20
-    }
-  }, /*#__PURE__*/React.createElement(Btn, {
-    onClick: () => setTab(t => t + 1)
-  }, "Next ", /*#__PURE__*/React.createElement(Icon, {
-    name: "chevronRight",
-    size: 15
-  }))));
+  );
 }
 function GrantDetail({
   grant: gr,
@@ -4285,7 +3772,6 @@ function GrantDetail({
   const flow = ['Assigned', 'Interviewed', 'Investigated', 'Report Written', 'Submitted'];
   const next = flow[flow.indexOf(gr.status) + 1];
   const gt = g(gr, 'grant_type', 'grantType');
-  const gtDisplay = gt + (gr.compassionate_subtype ? ' — ' + gr.compassionate_subtype : '');
   return /*#__PURE__*/React.createElement("div", {
     style: {
       padding: '16px 16px 100px'
@@ -4346,7 +3832,7 @@ function GrantDetail({
   }, gr.alias && `"${gr.alias}"`)), /*#__PURE__*/React.createElement(StatusBadge, {
     status: gr.status
   })), /*#__PURE__*/React.createElement(Badge, {
-    label: gtDisplay || '—',
+    label: gt || '—',
     color: C.accent
   }), GRANT_METHOD[gt] && /*#__PURE__*/React.createElement("p", {
     style: {
@@ -4391,13 +3877,30 @@ function GrantDetail({
   }), /*#__PURE__*/React.createElement(IR, {
     label: "Physical Condition",
     value: g(gr, 'physical_condition', 'physicalCondition')
-  })), g(gr, 'specific_reason', 'specificReason') && /*#__PURE__*/React.createElement(Sec, {
-    title: "Reason for Grant"
-  }, /*#__PURE__*/React.createElement("p", {
-    style: {
-      fontSize: 13
-    }
-  }, g(gr, 'specific_reason', 'specificReason'))), g(gr, 'interview_notes', 'interviewNotes') && /*#__PURE__*/React.createElement(Sec, {
+  })), /*#__PURE__*/React.createElement(Sec, {
+    title: "Presenting Problem (Section A)"
+  }, SECTION_A_QUESTIONS.map(item => g(gr, item.key) && /*#__PURE__*/React.createElement("div", {
+    key: item.key,
+    style: { marginBottom: 10 }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: { fontSize: 11, color: C.textMuted, fontWeight: 600, marginBottom: 2 }
+  }, item.q), /*#__PURE__*/React.createElement("p", {
+    style: { fontSize: 13 }
+  }, g(gr, item.key))))), (() => {
+    const isESIDetail = gt === 'Education & Social Intervention';
+    const detailQuestions = isESIDetail ? ESI_QUESTIONS : (GRANT_SECTION_QUESTIONS[gt] || []);
+    const sectionTitle = GRANT_SECTION_LABEL[gt] || 'Grant Questions';
+    return detailQuestions.length > 0 && /*#__PURE__*/React.createElement(Sec, {
+      title: sectionTitle
+    }, detailQuestions.map(item => g(gr, item.key) && /*#__PURE__*/React.createElement("div", {
+      key: item.key,
+      style: { marginBottom: 10 }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: { fontSize: 11, color: C.textMuted, fontWeight: 600, marginBottom: 2 }
+    }, item.q), /*#__PURE__*/React.createElement("p", {
+      style: { fontSize: 13 }
+    }, g(gr, item.key)))));
+  })(), g(gr, 'interview_notes', 'interviewNotes') && /*#__PURE__*/React.createElement(Sec, {
     title: "Interview Notes"
   }, /*#__PURE__*/React.createElement("p", {
     style: {
@@ -5458,279 +4961,6 @@ function SettingsModule({
 // Shown after a record is saved. Navigates to the Map tab with a draggable pin.
 // onConfirm(lat, lng) → save the corrected coordinates back to the record.
 // onCancel → dismiss, keeping the auto-geocoded coords.
-
-
-// -- Feature 2: Route Optimiser -------------------------------------------
-// "Plan my day" button on the map. Nearest-neighbour TSP from current GPS
-// position, then opens the full multi-stop route in Google Maps as waypoints.
-function RouteOptimiser({ cases, userPos }) {
-  const [open, setOpen] = useState(false);
-  const [selected, setSelected] = useState({});
-  const [route, setRoute] = useState(null);
-
-  const pinned = cases.filter(c => c.lat && c.lng);
-
-  const toggleCase = id => setSelected(s => ({ ...s, [id]: !s[id] }));
-  const selectedCases = pinned.filter(c => selected[c.id]);
-
-  // Nearest-neighbour TSP from current position
-  const optimiseRoute = () => {
-    if (selectedCases.length === 0) return;
-    const origin = userPos || { lat: 17.882, lng: -76.409 };
-    let remaining = [...selectedCases];
-    const ordered = [];
-    let cur = origin;
-    while (remaining.length) {
-      let best = null, bestDist = Infinity;
-      remaining.forEach(c => {
-        const d = Math.hypot(c.lat - cur.lat, c.lng - cur.lng);
-        if (d < bestDist) { bestDist = d; best = c; }
-      });
-      ordered.push(best);
-      cur = best;
-      remaining = remaining.filter(c => c.id !== best.id);
-    }
-    setRoute(ordered);
-  };
-
-  const openInMaps = () => {
-    if (!route || route.length === 0) return;
-    const origin = userPos ? userPos.lat + ',' + userPos.lng : '';
-    const dest = route[route.length - 1];
-    const waypoints = route.slice(0, -1).map(c => c.lat + ',' + c.lng).join('|');
-    const destStr = dest.lat + ',' + dest.lng;
-    let url = 'https://www.google.com/maps/dir/?api=1';
-    if (origin) url += '&origin=' + origin;
-    url += '&destination=' + destStr;
-    if (waypoints) url += '&waypoints=' + encodeURIComponent(waypoints);
-    url += '&travelmode=driving';
-    window.open(url, '_blank');
-  };
-
-  const typeColor = { path: C.primary, grant: C.accent, delivery: C.success, client: C.info };
-
-  return React.createElement(React.Fragment, null,
-    // Plan My Day button
-    React.createElement('button', {
-      onClick: () => setOpen(o => !o),
-      style: {
-        position: 'absolute', top: 112, right: 10, zIndex: 65,
-        background: open ? C.accent : C.surface,
-        border: '1px solid ' + (open ? C.accent : C.border),
-        borderRadius: 10, padding: '8px 12px',
-        boxShadow: '0 2px 8px #0002', cursor: 'pointer',
-        display: 'flex', alignItems: 'center', gap: 5,
-        fontSize: 12, fontWeight: 600,
-        color: open ? '#fff' : C.primaryDark
-      }
-    },
-      React.createElement(Icon, { name: 'navigation', size: 14, color: open ? '#fff' : C.accent }),
-      ' Route'
-    ),
-
-    // Backdrop
-    open && React.createElement('div', {
-      onClick: () => { setOpen(false); setRoute(null); },
-      style: { position: 'fixed', inset: 0, zIndex: 8000, background: 'rgba(0,0,0,0.35)' }
-    }),
-
-    // Bottom sheet
-    React.createElement('div', {
-      style: {
-        position: 'fixed', left: 0, right: 0, bottom: 62, zIndex: 8001,
-        background: C.surface, borderRadius: '16px 16px 0 0',
-        boxShadow: '0 -4px 24px rgba(0,0,0,0.18)',
-        display: 'flex', flexDirection: 'column', maxHeight: '70vh',
-        transform: open ? 'translateY(0)' : 'translateY(110%)',
-        transition: 'transform 0.28s cubic-bezier(0.4,0,0.2,1)',
-        pointerEvents: open ? 'all' : 'none'
-      }
-    },
-      // Header
-      React.createElement('div', {
-        style: { padding: '10px 16px 12px', borderBottom: '1px solid ' + C.border, flexShrink: 0 }
-      },
-        React.createElement('div', { style: { width: 36, height: 4, background: C.border, borderRadius: 2, margin: '0 auto 10px' } }),
-        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-          React.createElement(Icon, { name: 'navigation', size: 16, color: C.accent }),
-          React.createElement('span', { style: { fontSize: 15, fontWeight: 700, color: C.primaryDark, flex: 1 } }, 'Plan My Day'),
-          React.createElement('button', {
-            onClick: () => { setOpen(false); setRoute(null); },
-            style: { background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: C.textMuted, lineHeight: 1 }
-          }, '\u00d7')
-        ),
-        React.createElement('p', { style: { fontSize: 12, color: C.textMuted, marginTop: 4 } },
-          pinned.length + ' pinned cases available. Select the ones you plan to visit today.'
-        )
-      ),
-
-      // Case selector
-      React.createElement('div', { style: { overflowY: 'auto', flex: 1 } },
-        pinned.length === 0 && React.createElement('p', {
-          style: { fontSize: 13, color: C.textMuted, textAlign: 'center', padding: 24 }
-        }, 'No pinned cases yet. Add community and save cases to enable route planning.'),
-
-        !route && pinned.map(c => React.createElement('div', {
-          key: c.id,
-          onClick: () => toggleCase(c.id),
-          style: {
-            padding: '10px 16px', borderBottom: '1px solid ' + C.border,
-            display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer',
-            background: selected[c.id] ? C.primaryLight : 'transparent'
-          }
-        },
-          React.createElement('div', {
-            style: {
-              width: 20, height: 20, borderRadius: 4,
-              border: '2px solid ' + (selected[c.id] ? C.primary : C.border),
-              background: selected[c.id] ? C.primary : 'transparent',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              flexShrink: 0
-            }
-          }, selected[c.id] && React.createElement(Icon, { name: 'check', size: 12, color: '#fff' })),
-          React.createElement('div', { style: { flex: 1, minWidth: 0 } },
-            React.createElement('div', { style: { fontSize: 12, fontWeight: 700, color: typeColor[c.type] || C.primary, textTransform: 'uppercase', marginBottom: 1 } }, c.type),
-            React.createElement('div', { style: { fontSize: 13, fontWeight: 600, color: C.primaryDark, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, c.label),
-            React.createElement('div', { style: { fontSize: 11, color: C.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } },
-              [c.lot_number, c.street, c.community].filter(Boolean).join(', ') || c.address)
-          )
-        )),
-
-        // Optimised route preview
-        route && React.createElement('div', { style: { padding: '12px 16px' } },
-          React.createElement('div', { style: { fontSize: 13, fontWeight: 700, color: C.primaryDark, marginBottom: 10 } },
-            '\u{1F4CD} Optimised route (' + route.length + ' stops)'
-          ),
-          !userPos && React.createElement('div', {
-            style: { background: '#FFF8E1', border: '1px solid #FFE082', borderRadius: 6, padding: '6px 10px', fontSize: 11, color: '#5D4037', marginBottom: 10 }
-          }, '\u26a0 GPS not active \u2014 route starts from zone centre. Enable GPS for accurate routing.'),
-          route.map((c, i) => React.createElement('div', {
-            key: c.id,
-            style: { display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 10 }
-          },
-            React.createElement('div', {
-              style: { width: 24, height: 24, borderRadius: '50%', background: C.primary, color: '#fff', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }
-            }, i + 1),
-            React.createElement('div', { style: { flex: 1 } },
-              React.createElement('div', { style: { fontSize: 13, fontWeight: 600, color: C.primaryDark } }, c.label),
-              React.createElement('div', { style: { fontSize: 11, color: C.textMuted } },
-                [c.lot_number, c.street, c.community].filter(Boolean).join(', ') || c.address)
-            )
-          ))
-        )
-      ),
-
-      // Footer actions
-      React.createElement('div', {
-        style: { padding: '12px 16px', borderTop: '1px solid ' + C.border, display: 'flex', gap: 8, flexShrink: 0 }
-      },
-        !route
-          ? React.createElement(React.Fragment, null,
-              React.createElement('div', { style: { fontSize: 12, color: C.textMuted, flex: 1, alignSelf: 'center' } },
-                selectedCases.length + ' selected'
-              ),
-              React.createElement(Btn, {
-                onClick: optimiseRoute,
-                disabled: selectedCases.length === 0,
-                style: { justifyContent: 'center' }
-              }, '\u{1F4CD} Optimise Route')
-            )
-          : React.createElement(React.Fragment, null,
-              React.createElement(Btn, {
-                variant: 'ghost',
-                onClick: () => setRoute(null),
-                style: { flex: 1, justifyContent: 'center' }
-              }, '\u2190 Back'),
-              React.createElement(Btn, {
-                onClick: openInMaps,
-                style: { flex: 2, justifyContent: 'center', background: C.accent }
-              }, '\u{1F5FA} Open in Google Maps')
-            )
-      )
-    )
-  );
-}
-
-
-// -- EDIT MARKER MODAL ---------------------------------------------------------
-// Full-screen Leaflet map with draggable pin. Saves updated lat/lng via dispatch.
-// Always dispatches an UPDATE (never INSERT) so no duplication occurs.
-function EditMarkerModal({ caseItem, dispatch, onClose }) {
-  const mapRef = useRef(null);
-  const leafletMap = useRef(null);
-  const markerRef = useRef(null);
-  const [pos, setPos] = useState({ lat: caseItem.lat, lng: caseItem.lng });
-  const [moved, setMoved] = useState(false);
-
-  const typeDispatch = {
-    client: 'UPD_CLIENT', path: 'UPD_PATH', grant: 'UPD_GRANT', delivery: 'UPD_DEL'
-  };
-
-  useEffect(() => {
-    if (!mapRef.current || leafletMap.current) return;
-    const lat = caseItem.lat || 17.882;
-    const lng = caseItem.lng || -76.409;
-    const m = L.map(mapRef.current, { zoomControl: true, attributionControl: false }).setView([lat, lng], 16);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(m);
-    leafletMap.current = m;
-    const icon = L.divIcon({
-      html: '<div style="width:32px;height:32px;background:#0D6E6E;border:3px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 8px rgba(0,0,0,.45);cursor:grab"></div>',
-      className: '', iconSize: [32, 32], iconAnchor: [16, 32]
-    });
-    const mk = L.marker([lat, lng], { icon, draggable: true }).addTo(m);
-    mk.bindTooltip('Drag to reposition', { permanent: true, direction: 'top', offset: [0, -36] }).openTooltip();
-    mk.on('dragstart', () => mk.closeTooltip());
-    mk.on('dragend', e => {
-      const ll = e.target.getLatLng();
-      setPos({ lat: ll.lat, lng: ll.lng });
-      setMoved(true);
-    });
-    markerRef.current = mk;
-    return () => { m.remove(); leafletMap.current = null; };
-  }, []);
-
-  const save = () => {
-    if (!moved) { onClose(); return; }
-    const msg = 'Move pin to ' + pos.lat.toFixed(5) + ', ' + pos.lng.toFixed(5) + '?';
-    if (!window.confirm(msg)) return;
-    const actionType = typeDispatch[caseItem.type] || 'UPD_CLIENT';
-    dispatch({ type: actionType, p: { ...caseItem, lat: pos.lat, lng: pos.lng } });
-    onClose();
-  };
-
-  const addrLine = [caseItem.lot_number, caseItem.street, caseItem.community].filter(Boolean).join(', ') || caseItem.address || '';
-
-  return React.createElement('div', {
-    style: { position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', flexDirection: 'column', background: '#000' }
-  },
-    React.createElement('div', {
-      style: { background: C.surface, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexShrink: 0 }
-    },
-      React.createElement('div', null,
-        React.createElement('div', { style: { fontSize: 15, fontWeight: 700, color: C.primaryDark } }, 'Move Pin: ' + caseItem.label),
-        React.createElement('div', { style: { fontSize: 12, color: C.textMuted, marginTop: 2 } }, addrLine || 'Drag to the exact location')
-      ),
-      React.createElement('button', {
-        onClick: onClose,
-        style: { background: 'none', border: 'none', fontSize: 24, cursor: 'pointer', color: C.textMuted, lineHeight: 1, padding: 4 }
-      }, '\u00d7')
-    ),
-    moved && React.createElement('div', {
-      style: { background: '#FFF8E1', padding: '6px 16px', fontSize: 12, color: '#7B5E00', flexShrink: 0 }
-    }, '\u26a0 Pin moved to ' + pos.lat.toFixed(5) + ', ' + pos.lng.toFixed(5) + ' \u2014 tap Save to confirm'),
-    React.createElement('div', { ref: mapRef, style: { flex: 1 } }),
-    React.createElement('div', {
-      style: { background: C.surface, padding: '12px 16px', display: 'flex', gap: 10, flexShrink: 0 }
-    },
-      React.createElement(Btn, { variant: 'ghost', onClick: onClose, style: { flex: 1, justifyContent: 'center' } }, 'Cancel'),
-      React.createElement(Btn, {
-        onClick: save,
-        style: { flex: 1, justifyContent: 'center', background: moved ? C.primary : C.success }
-      }, moved ? 'Save New Position' : 'Pin Unchanged \u2714')
-    )
-  );
-}
-
 function PinConfirmModal({ record, onConfirm, onCancel }) {
   const mapRef = useRef(null);
   const leafletMap = useRef(null);
@@ -5812,7 +5042,6 @@ function PinConfirmModal({ record, onConfirm, onCancel }) {
 
 function MapModule({
   state,
-  dispatch,
   pendingPin,
   onPinConfirmed,
   onPinDismissed
@@ -5827,7 +5056,6 @@ function MapModule({
   const [gpsStatus, setGpsStatus] = useState('idle'); // idle|watching|error
   const [activeCase, setActiveCase] = useState(null); // {id, label, address, lat, lng, type}
   const [navigating, setNavigating] = useState(false);
-  const [editMarker, setEditMarker] = useState(null);
   const [geocoding, setGeocoding] = useState(false);
   const [filter, setFilter] = useState('all'); // all|path|grants|deliveries|clients
   const [mapLayer, setMapLayer] = useState('street'); // street|satellite
@@ -5890,7 +5118,7 @@ function MapModule({
     });
     return list;
   }, [state.pathCases, state.grants, state.deliveries, state.clients]);
-  const filtered = React.useMemo(() => filter === 'all' ? allCases : allCases.filter(c => c.type === filter), [allCases, filter]);
+  const filtered = filter === 'all' ? allCases : allCases.filter(c => c.type === filter || filter === 'path' && c.type === 'path');
   const typeColor = {
     path: C.primary,
     grant: C.accent,
@@ -6173,20 +5401,15 @@ function MapModule({
     }
   }, [gpsStatus, userPos, startGPS, drawRoute]);
 
-  // External navigate -- use stored coords if available
+  // External navigate to Google/Apple Maps
   const openExternalNav = c => {
-    const dest = (c.lat && c.lng) ? (c.lat + ',' + c.lng) : encodeURIComponent((c.address || c.label) + ', St. Thomas, Jamaica');
-    const origin = userPos ? (userPos.lat + ',' + userPos.lng) : '';
-    const url = origin
-      ? ('https://www.google.com/maps/dir/' + origin + '/' + dest)
-      : ('https://www.google.com/maps/dir/?api=1&destination=' + dest + '&travelmode=driving');
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(c.address + ', Jamaica')}&travelmode=driving`;
     window.open(url, '_blank');
   };
-  const geocodedCount = React.useMemo(() => filtered.filter(c => {
-    if (c.lat && c.lng) return true;
+  const geocodedCount = filtered.filter(c => {
     const key = (c.address + (state.profile?.parish || '')).toLowerCase().replace(/\s+/g, ' ').trim();
     return !!geocodeCache[key];
-  }).length, [filtered, geocodeCache]);
+  }).length;
   return React.createElement(React.Fragment, null,
     pendingPin && React.createElement(PinConfirmModal, {
       record: { ...pendingPin.record, label: pendingPin.record.name || pendingPin.record.client_name || pendingPin.record.post_office || 'Record' },
@@ -6198,7 +5421,7 @@ function MapModule({
       display: 'flex',
       flexDirection: 'column',
       height: 'calc(100vh - 56px - 62px)',
-      overflow: 'visible',
+      overflow: 'hidden',
       position: 'relative'
     }
   }, /*#__PURE__*/React.createElement("div", {
@@ -6341,81 +5564,141 @@ function MapModule({
     name: "wifiOff",
     size: 16,
     color: C.danger
-  }), "Go online to geocode addresses and pin cases on the map.")),
-  editMarker && React.createElement(EditMarkerModal, {
-    caseItem: editMarker, dispatch: dispatch, onClose: () => setEditMarker(null)
-  }),
-  activeCase && React.createElement('div', {
-    style: { position: 'fixed', bottom: 62, left: '50%', transform: 'translateX(-50%)',
-      width: '100%', maxWidth: 600, background: C.surface,
-      borderTop: '2px solid ' + (typeColor[activeCase.type] || C.primary),
-      borderRadius: '16px 16px 0 0', padding: '14px 16px 16px',
-      zIndex: 9000, boxShadow: '0 -6px 32px rgba(0,0,0,0.18)' }
-  },
-    React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 } },
-      React.createElement('div', { style: { flex: 1, minWidth: 0 } },
-        React.createElement('div', { style: { display: 'inline-block', padding: '2px 8px', borderRadius: 20,
-          fontSize: 11, fontWeight: 700, background: (typeColor[activeCase.type] || C.primary) + '22',
-          color: typeColor[activeCase.type] || C.primary, marginBottom: 4 } },
-          typeLabel[activeCase.type] || activeCase.type),
-        React.createElement('div', { style: { fontSize: 16, fontWeight: 700, color: C.primaryDark,
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, activeCase.label),
-        React.createElement('div', { style: { fontSize: 12, color: C.textMuted, marginTop: 2,
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } },
-          [activeCase.lot_number, activeCase.street, activeCase.community].filter(Boolean).join(', ') || activeCase.address),
-        activeCase.status && React.createElement('div', { style: { fontSize: 11, color: C.textMuted, marginTop: 2 } }, 'Status: ', activeCase.status)
-      ),
-      React.createElement('button', {
-        onClick: () => { setActiveCase(null); setNavigating(false); setEditMarker(null); if (routeLayer.current) routeLayer.current.clearLayers(); },
-        style: { background: 'none', border: 'none', cursor: 'pointer', color: C.textMuted,
-          padding: '4px 4px 4px 12px', fontSize: 22, lineHeight: 1, flexShrink: 0 }
-      }, '\u00d7')
-    ),
-    React.createElement('div', { style: { display: 'flex', gap: 8 } },
-      React.createElement(Btn, {
-        onClick: () => startNavigation(activeCase),
-        style: { flex: 1, justifyContent: 'center', opacity: activeCase.lat ? 1 : 0.5 },
-        variant: navigating ? 'secondary' : 'primary', disabled: !activeCase.lat
-      }, React.createElement(Icon, { name: 'navigation', size: 15, color: navigating ? C.primary : '#fff' }),
-        navigating ? 'Reroute' : 'Navigate'
-      ),
-      React.createElement(Btn, {
-        onClick: () => openExternalNav(activeCase), variant: 'ghost', style: { flex: 1, justifyContent: 'center' }
-      }, React.createElement(Icon, { name: 'mapPin', size: 15, color: C.primary }), 'Google Maps'),
-      React.createElement(Btn, {
-        onClick: () => setEditMarker(activeCase), variant: 'ghost', style: { flex: 1, justifyContent: 'center' }
-      }, React.createElement(Icon, { name: 'edit', size: 15, color: C.textMuted }), 'Move Pin')
-    ),
-    navigating && React.createElement('div', {
-      style: { marginTop: 10, padding: '8px 12px', background: C.primaryLight, borderRadius: 8,
-        fontSize: 12, color: C.primaryDark, display: 'flex', alignItems: 'center', gap: 6 }
+  }), "Go online to geocode addresses and pin cases on the map."), activeCase && /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      background: C.surface,
+      borderTop: `1px solid ${C.border}`,
+      borderRadius: '16px 16px 0 0',
+      padding: '16px',
+      zIndex: 70,
+      boxShadow: '0 -4px 20px #0002'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      marginBottom: 8
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'inline-block',
+      padding: '2px 8px',
+      borderRadius: 20,
+      fontSize: 11,
+      fontWeight: 700,
+      background: (typeColor[activeCase.type] || C.primary) + '22',
+      color: typeColor[activeCase.type] || C.primary,
+      marginBottom: 4
+    }
+  }, typeLabel[activeCase.type] || activeCase.type), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 16,
+      fontWeight: 700,
+      color: C.primaryDark
+    }
+  }, activeCase.label), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: C.textMuted,
+      marginTop: 2
+    }
+  }, activeCase.address), activeCase.status && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: C.textMuted,
+      marginTop: 2
+    }
+  }, "Status: ", activeCase.status)), /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      setActiveCase(null);
+      setNavigating(false);
+      if (routeLayer.current) routeLayer.current.clearLayers();
     },
-      React.createElement('span', { className: 'nav-pulse' }, '\u{1F4CD}'),
-      React.createElement('span', null,
-        gpsStatus === 'watching' && userPos
-          ? ('GPS active \u00b7 Accuracy \u00b1' + Math.round(userPos.accuracy || 0) + 'm')
-          : 'Requesting GPS\u2026 allow location access if prompted')
-    )
-  ),
-  React.createElement(RouteOptimiser, { cases: filtered, userPos: userPos }),
-  /*#__PURE__*/React.createElement(CaseListDrawer, {
+    style: {
+      background: 'none',
+      border: 'none',
+      cursor: 'pointer',
+      color: C.textMuted,
+      padding: 4
+    }
+  }, /*#__PURE__*/React.createElement(Icon, {
+    name: "x",
+    size: 20
+  }))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 8
+    }
+  }, activeCase.lat && /*#__PURE__*/React.createElement(Btn, {
+    onClick: () => startNavigation(activeCase),
+    style: {
+      flex: 1,
+      justifyContent: 'center'
+    },
+    variant: navigating ? 'secondary' : 'primary'
+  }, /*#__PURE__*/React.createElement(Icon, {
+    name: "navigation",
+    size: 15,
+    color: navigating ? C.primary : '#fff'
+  }), navigating ? 'Reroute' : 'Navigate'), /*#__PURE__*/React.createElement(Btn, {
+    onClick: () => openExternalNav(activeCase),
+    variant: "ghost",
+    style: {
+      flex: 1,
+      justifyContent: 'center'
+    }
+  }, /*#__PURE__*/React.createElement(Icon, {
+    name: "mapPin",
+    size: 15,
+    color: C.primary
+  }), "Maps App")), navigating && userPos && activeCase.lat && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 10,
+      padding: '8px 12px',
+      background: C.primaryLight,
+      borderRadius: 8,
+      fontSize: 12,
+      color: C.primaryDark,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 6
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "nav-pulse"
+  }, "📍"), /*#__PURE__*/React.createElement("span", null, "GPS active · Accuracy ±", Math.round(userPos.accuracy || 0), "m"))), /*#__PURE__*/React.createElement(CaseListDrawer, {
     cases: filtered,
     geocodeCache: geocodeCache,
     profile: state.profile,
     onSelect: c => {
-      // Use stored lat/lng first, fall back to geocodeCache
-      let lat = c.lat, lng = c.lng;
-      if (!lat || !lng) {
-        const key = (c.address + (state.profile?.parish || '')).toLowerCase().replace(/\s+/g, ' ').trim();
-        const coords = geocodeCache[key];
-        if (coords) { lat = coords.lat; lng = coords.lng; }
+      const key = (c.address + (state.profile?.parish || '')).toLowerCase().replace(/\s+/g, ' ').trim();
+      const coords = geocodeCache[key];
+      if (coords && leafletMap.current) {
+        leafletMap.current.setView([coords.lat, coords.lng], 16, {
+          animate: true
+        });
+        setActiveCase({
+          ...c,
+          lat: coords.lat,
+          lng: coords.lng
+        });
+      } else {
+        setActiveCase({
+          ...c,
+          lat: null,
+          lng: null
+        });
       }
-      if (lat && lng && leafletMap.current) {
-        leafletMap.current.setView([lat, lng], 16, { animate: true });
-      }
-      setActiveCase({ ...c, lat: lat || null, lng: lng || null });
     }
-  })
+  }))
   );
 }
 function CaseListDrawer({
@@ -6426,126 +5709,139 @@ function CaseListDrawer({
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const typeColor = { path: C.primary, grant: C.accent, delivery: C.success, client: C.info };
-  const typeLabel = { path: 'PATH', grant: 'Grant', delivery: 'Delivery', client: 'Client' };
-  const filtered = cases.filter(c =>
-    c.label.toLowerCase().includes(search.toLowerCase()) ||
-    (c.address || '').toLowerCase().includes(search.toLowerCase()) ||
-    (c.community || '').toLowerCase().includes(search.toLowerCase())
-  );
-
-  return React.createElement(React.Fragment, null,
-    // Toggle button
-    React.createElement('button', {
-      onClick: () => setOpen(o => !o),
+  const typeColor = {
+    path: C.primary,
+    grant: C.accent,
+    delivery: C.success,
+    client: C.info
+  };
+  const filtered = cases.filter(c => c.label.toLowerCase().includes(search.toLowerCase()) || c.address.toLowerCase().includes(search.toLowerCase()));
+  return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
+    onClick: () => setOpen(o => !o),
+    style: {
+      position: 'absolute',
+      top: 72,
+      right: 10,
+      zIndex: 65,
+      background: C.surface,
+      border: `1px solid ${C.border}`,
+      borderRadius: 10,
+      padding: '8px 10px',
+      boxShadow: '0 2px 8px #0002',
+      cursor: 'pointer',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 5,
+      fontSize: 12,
+      fontWeight: 600,
+      color: C.primaryDark
+    }
+  }, /*#__PURE__*/React.createElement(Icon, {
+    name: "route",
+    size: 14,
+    color: C.primary
+  }), " ", open ? 'Hide' : 'Cases'), open && /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: 'absolute',
+      top: 72,
+      right: 10,
+      zIndex: 64,
+      background: C.surface,
+      border: `1px solid ${C.border}`,
+      borderRadius: 12,
+      width: 220,
+      maxHeight: 340,
+      boxShadow: '0 4px 20px #0003',
+      display: 'flex',
+      flexDirection: 'column',
+      overflow: 'hidden'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: '10px 10px 6px'
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    value: search,
+    onChange: e => setSearch(e.target.value),
+    placeholder: "Search…",
+    style: {
+      width: '100%',
+      padding: '6px 10px',
+      border: `1px solid ${C.border}`,
+      borderRadius: 8,
+      fontSize: 13,
+      outline: 'none'
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      overflowY: 'auto',
+      flex: 1
+    }
+  }, filtered.length === 0 && /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 12,
+      color: C.textMuted,
+      textAlign: 'center',
+      padding: 16
+    }
+  }, "No cases"), filtered.map(c => {
+    const key = (c.address + (profile?.parish || '')).toLowerCase().replace(/\s+/g, ' ').trim();
+    const hasCoords = !!(c.lat && c.lng) || !!geocodeCache[key];
+    return /*#__PURE__*/React.createElement("div", {
+      key: c.id,
+      onClick: () => onSelect(c),
       style: {
-        position: 'absolute', top: 72, right: 10, zIndex: 65,
-        background: open ? C.primary : C.surface,
-        border: '1px solid ' + (open ? C.primary : C.border),
-        borderRadius: 10, padding: '8px 12px',
-        boxShadow: '0 2px 8px #0002', cursor: 'pointer',
-        display: 'flex', alignItems: 'center', gap: 5,
-        fontSize: 12, fontWeight: 600,
-        color: open ? '#fff' : C.primaryDark
-      }
-    },
-      React.createElement(Icon, { name: 'route', size: 14, color: open ? '#fff' : C.primary }),
-      ' ', open ? 'Hide' : ('Cases (' + cases.length + ')')
-    ),
-
-    // Backdrop
-    open && React.createElement('div', {
-      onClick: () => setOpen(false),
-      style: { position: 'fixed', inset: 0, zIndex: 8000, background: 'rgba(0,0,0,0.35)' }
-    }),
-
-    // Bottom sheet — slides up from above the nav bar
-    React.createElement('div', {
-      style: {
-        position: 'fixed', left: 0, right: 0, bottom: 62, zIndex: 8001,
-        background: C.surface, borderRadius: '16px 16px 0 0',
-        boxShadow: '0 -4px 24px rgba(0,0,0,0.18)',
-        display: 'flex', flexDirection: 'column', maxHeight: '60vh',
-        transform: open ? 'translateY(0)' : 'translateY(110%)',
-        transition: 'transform 0.28s cubic-bezier(0.4,0,0.2,1)',
-        pointerEvents: open ? 'all' : 'none'
-      }
-    },
-      // Handle bar + header
-      React.createElement('div', {
-        style: { padding: '10px 16px 8px', borderBottom: '1px solid ' + C.border, flexShrink: 0 }
+        padding: '8px 10px',
+        borderBottom: `1px solid ${C.border}`,
+        cursor: 'pointer',
+        display: 'flex',
+        gap: 8,
+        alignItems: 'flex-start'
       },
-        React.createElement('div', {
-          style: { width: 36, height: 4, borderRadius: 2, background: C.border, margin: '0 auto 10px' }
-        }),
-        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 } },
-          React.createElement('span', { style: { fontSize: 15, fontWeight: 700, color: C.primaryDark, flex: 1 } },
-            'Cases on Map (' + filtered.length + (search ? ' of ' + cases.length : '') + ')'
-          ),
-          React.createElement('button', {
-            onClick: () => setOpen(false),
-            style: { background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: C.textMuted, lineHeight: 1 }
-          }, '\u00d7')
-        ),
-        React.createElement('input', {
-          value: search,
-          onChange: e => setSearch(e.target.value),
-          placeholder: 'Search name or address\u2026',
-          style: {
-            width: '100%', padding: '8px 12px',
-            border: '1px solid ' + C.border, borderRadius: 8,
-            fontSize: 13, outline: 'none', background: C.background || '#F8F7F4'
-          }
-        })
-      ),
-
-      // Scrollable list
-      React.createElement('div', { style: { overflowY: 'auto', flex: 1 } },
-        filtered.length === 0 && React.createElement('p', {
-          style: { fontSize: 13, color: C.textMuted, textAlign: 'center', padding: 24 }
-        }, search ? 'No cases match "' + search + '"' : 'No cases on map yet'),
-
-        filtered.map(c => {
-          const cacheKey = (c.address + (profile?.parish || '')).toLowerCase().replace(/\s+/g, ' ').trim();
-          const hasCoords = !!(c.lat && c.lng) || !!geocodeCache[cacheKey];
-          const addrLine = [c.lot_number, c.street, c.community].filter(Boolean).join(', ') || c.address || '';
-          return React.createElement('div', {
-            key: c.id,
-            onClick: () => { onSelect(c); setOpen(false); },
-            style: {
-              padding: '12px 16px', borderBottom: '1px solid ' + C.border,
-              cursor: 'pointer', display: 'flex', gap: 12, alignItems: 'center'
-            },
-            onTouchStart: e => e.currentTarget.style.background = C.primaryLight,
-            onTouchEnd: e => e.currentTarget.style.background = 'transparent',
-            onMouseEnter: e => e.currentTarget.style.background = C.primaryLight,
-            onMouseLeave: e => e.currentTarget.style.background = 'transparent'
-          },
-            React.createElement('div', {
-              style: { width: 10, height: 10, borderRadius: '50%', background: typeColor[c.type] || C.primary, flexShrink: 0 }
-            }),
-            React.createElement('div', { style: { flex: 1, minWidth: 0 } },
-              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 } },
-                React.createElement('span', {
-                  style: { fontSize: 11, fontWeight: 700, color: typeColor[c.type] || C.primary, textTransform: 'uppercase', letterSpacing: '0.4px' }
-                }, typeLabel[c.type] || c.type),
-                c.status && React.createElement('span', { style: { fontSize: 10, color: C.textMuted } }, '\u00b7 ' + c.status)
-              ),
-              React.createElement('div', {
-                style: { fontSize: 13, fontWeight: 600, color: C.primaryDark, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
-              }, c.label),
-              addrLine && React.createElement('div', {
-                style: { fontSize: 11, color: C.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }
-              }, addrLine)
-            ),
-            React.createElement(Icon, { name: 'mapPin', size: 14, color: hasCoords ? C.success : C.border })
-          );
-        })
-      )
-    )
-  );
+      onMouseEnter: e => e.currentTarget.style.background = C.primaryLight,
+      onMouseLeave: e => e.currentTarget.style.background = 'transparent'
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        width: 8,
+        height: 8,
+        borderRadius: '50%',
+        background: typeColor[c.type] || C.primary,
+        marginTop: 5,
+        flexShrink: 0
+      }
+    }), /*#__PURE__*/React.createElement("div", {
+      style: {
+        flex: 1,
+        minWidth: 0
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 12,
+        fontWeight: 600,
+        color: C.primaryDark,
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap'
+      }
+    }, c.label), /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 11,
+        color: C.textMuted,
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap'
+      }
+    }, c.address)), hasCoords ? /*#__PURE__*/React.createElement(Icon, {
+      name: "mapPin",
+      size: 12,
+      color: C.success
+    }) : /*#__PURE__*/React.createElement(Icon, {
+      name: "mapPin",
+      size: 12,
+      color: C.border
+    }));
+  }))));
 }
-
 
 // ── MORE MENU ─────────────────────────────────────────────────────────────────
 function MoreMenu({
@@ -6667,101 +5963,9 @@ function InstallBanner() {
 }
 
 // ── ROOT ──────────────────────────────────────────────────────────────────────
-function useSync(state, dispatch) {
-  const oid = state.authUser?.id;
-  const pullAbort = useRef(null);
-
-  const writeOp = useCallback(async (action, table, row, id) => {
-    const online = navigator.onLine;
-    if (action === 'upsert') {
-      const fullRow = { ...row, officer_id: oid, updated_at: new Date().toISOString() };
-      if (online) {
-        try { await sbUpsert(table, fullRow); return; }
-        catch (e) { console.warn('write failed, queuing', e); }
-      }
-      await enqueue({ action: 'upsert', table, row: fullRow });
-    } else {
-      if (online) {
-        try { await sbDelete(table, id); return; }
-        catch (e) { console.warn('delete failed, queuing', e); }
-      }
-      await enqueue({ action: 'delete', table, id });
-    }
-    const q = await dequeueAll();
-    dispatch({ type: 'SET_PENDING', p: q.length });
-  }, [oid]);
-
-  const pull = useCallback(async () => {
-    if (!navigator.onLine || !oid) return;
-    if (pullAbort.current) pullAbort.current.abort();
-    pullAbort.current = new AbortController();
-    const [clients, path, grants, deliveries, pos] = await Promise.all([
-      sbSelect('ssa_clients', oid, 'id,name,dob,nis,trn,phone,address,parish,community,street,lot_number,lat,lng,directions,created_at,updated_at'),
-      sbSelect('ssa_path_cases', oid, 'id,client_id,client_name,case_type,status,residential_address,mailing_address,parish,community,street,lot_number,lat,lng,directions,visit_date,next_review,notes,payee_name,payee_trn,bank_name,account_number,dob,trn,nis,assigned_date,family_no,physical_condition,interview_notes,investigation_findings,recommended_amount,specific_reason,created_at,updated_at'),
-      sbSelect('ssa_grants', oid, 'id,client_id,client_name,grant_type,compassionate_subtype,status,address,parish,community,street,lot_number,lat,lng,directions,marital_status,purpose,amount,method,dob,trn,nis,phone,telephone,household_members,assets,notes,assigned_date,physical_condition,specific_reason,interview_notes,investigation_findings,recommended_amount,created_at,updated_at'),
-      sbSelect('ssa_deliveries', oid, 'id,post_office,post_office_community,lat,lng,delivery_date,batch_ref,cheque_count,receipt_details,notes,status,created_at,updated_at'),
-      sbSelect('ssa_post_offices', oid, 'id,name,community,lat,lng,created_at,updated_at'),
-    ]);
-    dispatch({ type: 'LOAD_ALL', clients, path, grants, deliveries, pos });
-  }, [oid]);
-
-  const syncNow = useCallback(async () => {
-    if (!navigator.onLine) return;
-    dispatch({ type: 'SET_SYNCING', p: true });
-    try {
-      const synced = await flushQueue();
-      const remaining = await dequeueAll();
-      dispatch({ type: 'SET_PENDING', p: remaining.length });
-      if (synced > 0 || remaining.length === 0) await pull();
-    } catch (e) {
-      console.warn('sync err', e);
-    }
-    dispatch({ type: 'SET_SYNCING', p: false });
-  }, [pull]);
-
-  useEffect(() => {
-    const up = () => { dispatch({ type: 'SET_ONLINE', p: true }); syncNow(); };
-    const dn = () => dispatch({ type: 'SET_ONLINE', p: false });
-    window.addEventListener('online', up);
-    window.addEventListener('offline', dn);
-    return () => { window.removeEventListener('online', up); window.removeEventListener('offline', dn); };
-  }, [syncNow]);
-
-  // Expose syncNow globally for SW background sync messages
-  useEffect(() => { window.__ssaSyncNow = syncNow; }, [syncNow]);
-  useEffect(() => { if (oid) pull(); }, [oid]);
-  useEffect(() => {
-    dequeueAll().then(q => dispatch({ type: 'SET_PENDING', p: q.length }));
-  }, []);
-
-  return { writeOp, syncNow };
-}
-
-// -- SYNC DISPATCH ---------------------------------------------------------
-function useSyncDispatch(dispatch, writeOp) {
-  return useCallback(action => {
-    dispatch(action);
-    const TABLE_MAP = {
-      ADD_CLIENT: ['upsert', 'ssa_clients'], UPD_CLIENT: ['upsert', 'ssa_clients'], DEL_CLIENT: ['delete', 'ssa_clients'],
-      ADD_PATH:   ['upsert', 'ssa_path_cases'], UPD_PATH: ['upsert', 'ssa_path_cases'], DEL_PATH: ['delete', 'ssa_path_cases'],
-      ADD_GRANT:  ['upsert', 'ssa_grants'], UPD_GRANT: ['upsert', 'ssa_grants'], DEL_GRANT: ['delete', 'ssa_grants'],
-      ADD_DEL:    ['upsert', 'ssa_deliveries'], UPD_DEL: ['upsert', 'ssa_deliveries'], DEL_DEL: ['delete', 'ssa_deliveries'],
-      ADD_PO:     ['upsert', 'ssa_post_offices'], DEL_PO: ['delete', 'ssa_post_offices']
-    };
-    const m = TABLE_MAP[action.type];
-    if (!m) return;
-    const [op, table] = m;
-    if (op === 'upsert') writeOp('upsert', table, action.p);
-    else writeOp('delete', table, null, action.p);
-  }, [dispatch, writeOp]);
-}
 function App() {
   const [state, dispatch] = useReducer(reducer, INIT);
-  const _initPage = (() => {
-    const p = new URLSearchParams(location.search).get('shortcut');
-    return p === 'path' ? 'path' : p === 'map' ? 'map' : 'dashboard';
-  })();
-  const [page, setPage] = useState(_initPage);
+  const [page, setPage] = useState('dashboard');
   const [pendingPin, setPendingPin] = useState(null); // { record, type, id }
   const [authLoading, setAuthLoading] = useState(true);
   const [profileChecked, setProfileChecked] = useState(false);
@@ -6797,72 +6001,49 @@ function App() {
   }, [state.authUser]);
   useEffect(() => {
     let done = false;
-    // Feature 62: try cached session first for instant offline startup
-    const cached = getCachedSession();
-    if (cached?.user && !navigator.onLine) {
-      dispatch({ type: 'SET_AUTH', p: cached.user });
-      setAuthLoading(false);
+    sb.auth.getSession().then(({
+      data,
+      error
+    }) => {
       done = true;
-    }
-    sb.auth.getSession().then(({ data, error }) => {
-      done = true;
-      if (error && !cached?.user) showErr('SUPABASE getSession ERROR: ' + error.message);
-      if (data?.session) {
-        cacheSession(data.session);
-        dispatch({ type: 'SET_AUTH', p: data.session.user });
-      } else if (!cached?.user) {
-        setProfileChecked(true);
-      }
+      if (error) showErr('SUPABASE getSession ERROR: ' + error.message);
+      if (data?.session?.user) dispatch({
+        type: 'SET_AUTH',
+        p: data.session.user
+      });else setProfileChecked(true);
       setAuthLoading(false);
     }).catch(e => {
       done = true;
-      if (!cached?.user) {
-        showErr('SUPABASE getSession THREW: ' + (e.message || e));
-        setProfileChecked(true);
-      }
+      showErr('SUPABASE getSession THREW: ' + (e.message || e));
+      setProfileChecked(true);
       setAuthLoading(false);
     });
     setTimeout(() => {
       if (!done) {
-        const c = getCachedSession();
-        if (c?.user) { dispatch({ type: 'SET_AUTH', p: c.user }); }
-        else { showErr('Auth timed out after 8s.'); setProfileChecked(true); }
+        showErr('SUPABASE getSession TIMED OUT after 8s — check project URL/key or network.');
+        setProfileChecked(true);
         setAuthLoading(false);
       }
     }, 8000);
-    sb.auth.onAuthStateChange((_, session) => {
-      if (session) cacheSession(session);
-      else clearCachedSession();
-      dispatch({ type: 'SET_AUTH', p: session?.user || null });
-    });
-
+    sb.auth.onAuthStateChange((_, session) => dispatch({
+      type: 'SET_AUTH',
+      p: session?.user || null
+    }));
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js').then(reg => {
-        // Activate waiting SW immediately
+        // Tell a waiting SW to take over immediately
         if (reg.waiting) reg.waiting.postMessage('skipWaiting');
         reg.addEventListener('updatefound', () => {
           const nw = reg.installing;
           if (nw) nw.addEventListener('statechange', () => {
             if (nw.state === 'installed' && navigator.serviceWorker.controller) {
               nw.postMessage('skipWaiting');
+              // Reload once the new SW has claimed the page
               navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload(), { once: true });
             }
           });
         });
-        // Listen for BG_SYNC messages from the SW (fires when back online)
-        navigator.serviceWorker.addEventListener('message', e => {
-          if (e.data && e.data.type === 'BG_SYNC') {
-            // Trigger app-level sync if there are pending ops
-            window.__ssaSyncNow && window.__ssaSyncNow();
-          }
-        });
       }).catch(() => {});
-      // Register background sync when going online
-      window.addEventListener('online', () => {
-        navigator.serviceWorker.ready.then(reg => {
-          if (reg.sync) reg.sync.register('ssa-sync').catch(() => {});
-        });
-      });
     }
   }, []);
 
@@ -7006,7 +6187,6 @@ function App() {
     }),
     map: /*#__PURE__*/React.createElement(MapModule, {
       state: state,
-      dispatch: sd,
       pendingPin: pendingPin,
       onPinConfirmed: (lat, lng) => {
         if (!pendingPin) return;
@@ -7109,10 +6289,6 @@ try {
 } catch (e) {
   showErr('RENDER ERROR: ' + e.message + '\n' + (e.stack || ''));
 }
-}); // end DOMContentLoaded
 </script>
 </body>
-</html>borderRadius: 8
-    }
-  })))))), React.createElement('div', { style: { marginTop: 24, borderTop: '1px solid ' + C.border, paddingTop: 16 } }, React.createElement(VisitLog, { caseId: p.id, caseType: 'path', officerName: officerName, dispatch: dispatch })));
-}
+</html>
